@@ -1,0 +1,13 @@
+# HP 50g emulator: copyrighted HP ROM images and personal calculator state.
+# Reference material only - never commit.
+HP 50g/
+
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
