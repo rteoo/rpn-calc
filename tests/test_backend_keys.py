@@ -36,6 +36,13 @@ def qt_app(tmp_path_factory):
 
 
 @pytest.fixture
+def clipboard(qt_app):
+    board = QGuiApplication.clipboard()
+    board.clear()
+    return board
+
+
+@pytest.fixture
 def backend(qt_app):
     QSettings().clear()
     return Backend()
@@ -213,3 +220,35 @@ class TestSystemTheme:
         backend.darkMode = theme.darkMode()
         assert backend.darkMode == theme.darkMode()
         assert backend.themeBackground.startswith("#")
+
+
+class TestClipboard:
+    """Both engines are live at once, so the clipboard has to reach the one
+    actually on screen. It used to always reach the algebraic one, which meant
+    copy and paste silently did nothing in RPN - the default mode."""
+
+    def test_copy_takes_level_one_in_rpn(self, backend, clipboard):
+        press_ids(backend, "4 2 enter")
+        backend.copyResult()
+        assert clipboard.text() == "42"
+
+    def test_copy_takes_the_open_command_line(self, backend, clipboard):
+        press_ids(backend, "1 enter 3 dot 5")
+        backend.copyResult()
+        assert clipboard.text() == "3.5"
+
+    def test_paste_pushes_onto_the_stack_in_rpn(self, backend, clipboard):
+        press_ids(backend, "7 enter")
+        clipboard.setText(" 2,5 ")
+        backend.pasteNumber()
+        assert backend.stackLines == ["2.5", "7"]
+
+    def test_paste_still_reaches_the_algebraic_entry(self, backend, clipboard):
+        backend.toggleEntryMode()
+        clipboard.setText("42.5")
+        backend.pasteNumber()
+        assert backend.display == "42.5"
+
+    def test_copy_of_an_empty_stack_is_empty(self, backend, clipboard):
+        backend.copyResult()
+        assert clipboard.text() == ""

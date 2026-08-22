@@ -9,7 +9,8 @@ import math
 import pytest
 
 from rpncalc.numeric import FIX, NumberFormat
-from rpncalc.rpn_engine import RpnEngine
+from rpncalc.numeric import format_number
+from rpncalc.rpn_engine import DEFAULT_ANGLE_MODE, RpnEngine
 
 
 def press(engine: RpnEngine, keys: str) -> None:
@@ -215,9 +216,13 @@ def test_drop_underflow_leaves_error_and_empty_stack() -> None:
 # -- trig / angle modes -----------------------------------------------------
 
 
+def test_starts_in_the_declared_default_angle_mode() -> None:
+    assert new_engine().angle_mode == DEFAULT_ANGLE_MODE
+
+
 def test_sin_in_deg_mode() -> None:
     e = new_engine()
-    assert e.angle_mode == "DEG"
+    e.set_angle_mode("DEG")
     press(e, "9 0")
     e.press("sin")
     assert e.stack.peek(1) == pytest.approx(1.0)
@@ -233,6 +238,7 @@ def test_sin_in_rad_mode() -> None:
 
 def test_asin_round_trips_with_sin_in_deg_mode() -> None:
     e = new_engine()
+    e.set_angle_mode("DEG")
     press(e, "3 0")
     e.press("sin")
     e.press("asin")
@@ -393,3 +399,70 @@ def test_undo_restores_stack_after_a_command() -> None:
     # entry, then add" -- back to the stack as it stood before that command,
     # not to some intermediate state where 4 had already been pushed.
     assert e.stack.to_list() == [3]
+
+
+# -- overflow and malformed input never escape the engine --------------------
+
+
+@pytest.mark.parametrize(
+    "sequence, command",
+    [
+        ("1 0 0 0 enter", "exp"),      # math.exp raises OverflowError
+        ("1 eex 2 0 0 enter", "sq"),   # returns inf rather than raising
+        ("4 0 0 enter", "alog"),
+        ("1 eex 3 0 0 enter 1 eex 3 0 0 enter", "*"),
+        ("1 0 enter 4 0 0 enter", "pow"),
+    ],
+)
+def test_overflow_becomes_an_error_not_a_crash(sequence, command) -> None:
+    e = new_engine()
+    press(e, sequence)
+    before = e.stack.to_list()
+    e.press(command)
+    assert e.error == "Infinite Result"
+    assert e.stack.to_list() == before
+    # The display must still render: an infinite level would break formatting
+    # for every level, not just its own.
+    assert e.stack_lines() == [format_number(v) for v in before]
+
+
+def test_an_entry_that_overflows_is_rejected_whole() -> None:
+    e = new_engine()
+    press(e, "7 enter")
+    press(e, "1 eex 9 9 9")
+    e.press("enter")
+    assert e.error == "Infinite Result"
+    assert e.stack.to_list() == [7.0]  # nothing half-pushed
+    assert e.stack_lines() == ["7"]
+
+
+def test_a_negative_base_with_a_fractional_power_is_a_domain_error() -> None:
+    e = new_engine()
+    press(e, "8 chs enter 0 . 5 pow")
+    assert e.error == "Invalid Input"
+    assert e.stack.to_list() == [0.5, -8.0]
+
+
+def test_decimal_point_is_ignored_inside_an_exponent() -> None:
+    e = new_engine()
+    press(e, "1 eex 3 .")
+    assert e.command_line == "1E3"  # the key does nothing, as on the 50g
+    e.press("enter")
+    assert e.stack_lines() == ["1000"]
+
+
+def test_an_unbound_command_is_a_no_op() -> None:
+    e = new_engine()
+    press(e, "4 enter")
+    e.press("bogus")  # must not raise
+    assert e.stack.to_list() == [4.0]
+    assert e.error is None
+
+
+def test_undo_takes_back_the_entry_an_erroring_command_committed() -> None:
+    e = new_engine()
+    press(e, "5 +")  # commits 5, then + fails: nothing to add it to
+    assert e.error == "Too Few Arguments"
+    assert e.stack.to_list() == [5.0]  # the commit stands
+    e.press("undo")
+    assert e.stack.to_list() == []  # and UNDO takes it back
