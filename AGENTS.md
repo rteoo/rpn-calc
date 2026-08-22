@@ -112,6 +112,28 @@ No CAS, no soft menus (F1–F6), no ALPHA entry, no symbolic variables, no units
 numbers, no matrices, no equation writer. `EVAL`, `'`, `SYMB`, and
 `ALPHA` keep their real legends and are rendered dimmed rather than stubbed.
 
+## Packaging
+
+`tools/build_exe.py` drives PyInstaller through `packaging/rpncalc.spec`.
+`pyside6-deploy` is not used: it goes through Nuitka, which needs a C compiler.
+
+- **The entry point is `packaging/entry.py`, not `rpncalc/__main__.py`.**
+  PyInstaller runs its entry script as a top-level module with no parent package,
+  so the relative imports in `__main__.py` have nothing to be relative to.
+- **Excluding a PySide6 module does not exclude the Qt library behind it.** The
+  hook copies what it finds, so `packaging/rpncalc.spec` prunes `a.binaries` and
+  `a.datas` by name. Without that the build carries `Qt6WebEngineCore.dll` — a
+  whole Chromium, 194 MB — and weighs 159 MB instead of 53 MB.
+- `__main__.py` resolves assets through `_resource_dir()`, which honours
+  `sys._MEIPASS`; `Path(__file__).parent` is wrong in a frozen build.
+- **Verifying a frozen build means walking the process tree.** One-file mode
+  spawns a child process to run the app; the parent owns only a hidden bootloader
+  window, so enumerating the parent's windows finds nothing and looks like a hang.
+- `--debug` builds a console variant. A windowed build has nowhere to print a
+  traceback, so a startup failure is silent.
+- **An offscreen `grabWindow()` renders whether or not the window would really
+  show.** It is not evidence the app opens; check a real window for that.
+
 ## Rules
 
 - **`HP 50g/` is gitignored and stays that way.** It holds copyrighted HP ROM images and

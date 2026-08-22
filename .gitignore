@@ -11,3 +11,8 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .coverage
+
+# PyInstaller output and its generated version resource
+/dist/
+/build/
+packaging/version_info.txt

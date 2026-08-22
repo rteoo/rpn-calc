@@ -10,7 +10,7 @@ Item {
     id: root
 
     property var labels: []
-    property var enabled: []
+    property var slotEnabled: []
     property color pageColor: "#101010"
     property color inkColor: "#eeeeee"
     property int fontPixelSize: 11
@@ -45,7 +45,7 @@ Item {
                 height: root.height
 
                 readonly property bool live:
-                    index < root.enabled.length ? root.enabled[index] : true
+                    index < root.slotEnabled.length ? root.slotEnabled[index] : true
 
                 Rectangle {
                     anchors.fill: parent

@@ -80,6 +80,29 @@ brightens on the face so you can read the next key rather than remember it.
 | `Ctrl+M` | Toggle RPN / ALG |
 | `Ctrl+C` / `Ctrl+V` | Copy / paste a number |
 
+## Building a Windows executable
+
+```sh
+.venv/Scripts/pip install -e ".[build]"
+.venv/Scripts/python.exe tools/build_exe.py
+```
+
+Produces `dist/rpncalc.exe` — one self-contained file, about 53 MB, no Python
+installation needed on the target machine.
+
+| | Startup | Shape |
+|---|---|---|
+| `tools/build_exe.py` | ~3.3 s | a single `.exe` |
+| `tools/build_exe.py --onedir` | ~1.0 s | a `dist/rpncalc/` folder |
+
+One file unpacks its whole payload to a temporary directory on **every** launch,
+so it never gets faster. If you launch the calculator often, the folder build is
+worth the extra shape. `--debug` produces a console build that prints why it
+failed to start, which a windowed build cannot.
+
+The icon is committed at `packaging/rpncalc.ico`; regenerate it with
+`python tools/make_icon.py` only if it should change.
+
 ## Test
 
 ```sh

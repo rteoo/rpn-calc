@@ -13,6 +13,7 @@ dependencies = ["pyside6>=6.11"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+build = ["pyinstaller>=6.22"]
 
 [project.gui-scripts]
 rpncalc = "rpncalc.__main__:main"

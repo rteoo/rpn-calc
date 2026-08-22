@@ -16,7 +16,7 @@ ApplicationWindow {
     readonly property bool darkMode: backend.darkMode
     readonly property color pageColor: backend.themeBackground
     readonly property color inkColor: backend.themeForeground
-    // Every hardcoded size is expressed at the 420 x 760 design size; resizing
+    // Every hardcoded size is expressed at the 420 x 820 design size; resizing
     // the window scales the whole face with it. The design size is taller than
     // omacalc's because the 50g keyboard is seven rows, not five, plus the
     // navigation row the stack browser needs.
@@ -209,7 +209,7 @@ ApplicationWindow {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 labels: backend.rpnMode ? backend.menuLabels : []
-                enabled: backend.menuEnabled
+                slotEnabled: backend.menuEnabled
                 pageColor: win.pageColor
                 inkColor: win.inkColor
                 fontPixelSize: win.scaledSize(12)
@@ -343,7 +343,7 @@ ApplicationWindow {
         } else {
             // First run: open at the design size, grown by the desktop text scale.
             width = Math.round(420 * backend.textScale);
-            height = Math.round(760 * backend.textScale);
+            height = Math.round(820 * backend.textScale);
         }
     }
 
