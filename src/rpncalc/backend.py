@@ -24,10 +24,33 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor, QGuiApplication
 
 from . import alg_engine
-from .numeric import parse_number
+from .keymap import KEY_ROWS, Shift, ShiftState, resolve
+from .numeric import ENG, FIX, SCI, STD, NumberFormat, parse_number
+from .rpn_engine import RpnEngine
 
 _WINDOW_GEOMETRY_SETTING = "window/geometry"
 _WINDOW_MAXIMIZED_SETTING = "window/maximized"
+_RPN_MODE_SETTING = "mode/rpn"
+_ANGLE_MODE_SETTING = "mode/angle"
+_FORMAT_MODE_SETTING = "mode/format"
+_FORMAT_DIGITS_SETTING = "mode/formatDigits"
+
+# RPN command ids that mean something to the algebraic engine too. The 50g uses
+# one keyboard for both modes, so the keypad never changes shape - keys that
+# have no algebraic meaning simply dim.
+_ALG_EQUIVALENT = {
+    ".": ".",
+    "enter": "=",
+    "backspace": "backspace",
+    "clear": "clear",
+    "clear_entry": "clear",
+    "chs": "sign",
+    "percent": "%",
+    "+": "+",
+    "-": "-",
+    "*": "*",
+    "/": "/",
+}
 
 _LIGHT_THEME = {
     "background": "#ffffff",
@@ -47,6 +70,9 @@ class Backend(QObject):
     """QObject facade over `AlgEngine`, exposed to `Main.qml` as `backend`."""
 
     calculationChanged = Signal()
+    stackChanged = Signal()
+    modeChanged = Signal()
+    shiftChanged = Signal()
     darkModeChanged = Signal()
     textScaleChanged = Signal()
     themeColorsChanged = Signal()
@@ -54,6 +80,9 @@ class Backend(QObject):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._engine = alg_engine.AlgEngine()
+        self._rpn = RpnEngine()
+        self._shift = ShiftState()
+        self._rpn_mode = True
 
         self._dark_mode = True
         self._text_scale = 1.0
@@ -66,6 +95,7 @@ class Backend(QObject):
         self._theme_watcher.fileChanged.connect(self._handle_theme_file_changed)
         self._theme_watcher.directoryChanged.connect(self._handle_theme_file_changed)
 
+        self._load_modes()
         self._load_omarchy_theme()
         self._watch_omarchy_theme()
 
@@ -175,6 +205,152 @@ class Backend(QObject):
         settings.setValue(_WINDOW_MAXIMIZED_SETTING, maximized)
 
     # -- Omarchy theme (degrades gracefully when the file is absent) ----------
+
+    # -- RPN --------------------------------------------------------------
+
+    def _get_rpn_mode(self) -> bool:
+        return self._rpn_mode
+
+    def _set_rpn_mode(self, rpn_mode: bool) -> None:
+        if self._rpn_mode == rpn_mode:
+            return
+        self._rpn_mode = rpn_mode
+        self._shift.clear()
+        self._save_modes()
+        self.modeChanged.emit()
+        self.shiftChanged.emit()
+        self.stackChanged.emit()
+        self.calculationChanged.emit()
+
+    rpnMode = Property(bool, _get_rpn_mode, _set_rpn_mode, notify=modeChanged)
+
+    def _get_stack_lines(self) -> list:
+        return self._rpn.stack_lines()
+
+    def _get_command_line(self) -> str:
+        return self._rpn.command_line or ""
+
+    def _get_entering(self) -> bool:
+        return self._rpn.command_line is not None
+
+    def _get_error_text(self) -> str:
+        return self._rpn.error or ""
+
+    stackLines = Property(list, _get_stack_lines, notify=stackChanged)
+    commandLine = Property(str, _get_command_line, notify=stackChanged)
+    entering = Property(bool, _get_entering, notify=stackChanged)
+    errorText = Property(str, _get_error_text, notify=stackChanged)
+
+    def _get_angle_mode(self) -> str:
+        return self._rpn.angle_mode
+
+    def _get_number_format_label(self) -> str:
+        return self._rpn.number_format.label()
+
+    angleMode = Property(str, _get_angle_mode, notify=modeChanged)
+    numberFormatLabel = Property(str, _get_number_format_label, notify=modeChanged)
+
+    def _get_shift_state(self) -> str:
+        return self._shift.shift.value
+
+    shiftState = Property(str, _get_shift_state, notify=shiftChanged)
+
+    def _get_key_rows(self) -> list:
+        """The faceplate as a model for QML: rows of keys, each with its planes."""
+        rows = []
+        for row in KEY_ROWS:
+            cells = []
+            for key in row:
+                cells.append({
+                    "keyId": key.key_id,
+                    "label": key.label,
+                    "labelLeft": key.left_label,
+                    "labelRight": key.right_label,
+                    "alpha": key.alpha,
+                    "style": key.style,
+                    "live": self._key_is_live(key),
+                    "icon": "backspace" if key.key_id == "backspace" else "",
+                })
+            rows.append(cells)
+        return rows
+
+    keyRows = Property(list, _get_key_rows, notify=modeChanged)
+
+    def _key_is_live(self, key) -> bool:
+        if not key.is_live():
+            return False
+        if self._rpn_mode or key.style in ("shift_left", "shift_right"):
+            return True
+        # In algebraic mode only the keys omacalc's engine understands respond.
+        return any(
+            action in _ALG_EQUIVALENT or (action or "").isdigit()
+            for action in (key.action, key.left_action, key.right_action)
+            if action
+        )
+
+    @Slot(str)
+    def pressKeyId(self, key_id: str) -> None:
+        """A press on a physical keycap, resolved through the shift planes."""
+        command = resolve(key_id, self._shift)
+        self.shiftChanged.emit()
+        if command is not None:
+            self.pressCommand(command)
+
+    @Slot(str)
+    def pressCommand(self, command: str) -> None:
+        """A resolved command, from the keypad or the physical keyboard."""
+        if self._rpn_mode:
+            self._rpn.press(command)
+            self.stackChanged.emit()
+            return
+
+        key = command if command.isdigit() else _ALG_EQUIVALENT.get(command)
+        if key is None:
+            return
+        self._engine.press(key)
+        self.calculationChanged.emit()
+
+    @Slot()
+    def toggleEntryMode(self) -> None:
+        self._set_rpn_mode(not self._rpn_mode)
+
+    @Slot(str)
+    def setAngleMode(self, mode: str) -> None:
+        self._rpn.set_angle_mode(mode)
+        self._save_modes()
+        self.modeChanged.emit()
+        self.stackChanged.emit()
+
+    @Slot(str, int)
+    def setNumberFormat(self, mode: str, digits: int) -> None:
+        self._rpn.set_number_format(NumberFormat(mode, digits))
+        self._save_modes()
+        self.modeChanged.emit()
+        self.stackChanged.emit()
+
+    def _load_modes(self) -> None:
+        settings = QSettings()
+        self._rpn_mode = settings.value(_RPN_MODE_SETTING, True, type=bool)
+        angle = settings.value(_ANGLE_MODE_SETTING, "RAD", type=str)
+        mode = settings.value(_FORMAT_MODE_SETTING, STD, type=str)
+        digits = settings.value(_FORMAT_DIGITS_SETTING, 3, type=int)
+        # Settings are user-editable text; a bad value must not stop the app
+        # from starting, so fall back to the defaults instead of raising.
+        try:
+            self._rpn.set_angle_mode(angle)
+        except ValueError:
+            pass
+        try:
+            self._rpn.set_number_format(NumberFormat(mode, digits))
+        except ValueError:
+            pass
+
+    def _save_modes(self) -> None:
+        settings = QSettings()
+        settings.setValue(_RPN_MODE_SETTING, self._rpn_mode)
+        settings.setValue(_ANGLE_MODE_SETTING, self._rpn.angle_mode)
+        settings.setValue(_FORMAT_MODE_SETTING, self._rpn.number_format.mode)
+        settings.setValue(_FORMAT_DIGITS_SETTING, self._rpn.number_format.digits)
 
     def _load_omarchy_theme(self) -> None:
         defaults = _DARK_THEME if self._dark_mode else _LIGHT_THEME

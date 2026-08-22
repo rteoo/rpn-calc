@@ -6,22 +6,20 @@ import QtQuick.Window
 
 ApplicationWindow {
     id: win
-    width: 400
-    height: 568
-    minimumWidth: 300
-    minimumHeight: 430
+    width: 420
+    height: 760
+    minimumWidth: 330
+    minimumHeight: 600
     visible: true
-    title: "Omacalc"
+    title: "rpn-calc"
 
     readonly property bool darkMode: backend.darkMode
     readonly property color pageColor: backend.themeBackground
     readonly property color inkColor: backend.themeForeground
-    // Every hardcoded size in the interface is expressed at the 400 × 568
-    // design size; resizing the window scales the whole face with it. The
-    // desktop text scale is folded into the default window size below, and
-    // runtime changes resize the window proportionally so the face re-flows
-    // live along with the rest of the desktop.
-    readonly property real uiScale: Math.min(width / 400, height / 568)
+    // Every hardcoded size is expressed at the 420 x 760 design size; resizing
+    // the window scales the whole face with it. The design size is taller than
+    // omacalc's because the 50g keyboard is seven rows, not five.
+    readonly property real uiScale: Math.min(width / 420, height / 760)
     property real appliedTextScale: backend.textScale
 
     Connections {
@@ -66,6 +64,18 @@ ApplicationWindow {
     }
 
     Shortcut {
+        sequence: "Ctrl+Z"
+        context: Qt.ApplicationShortcut
+        onActivated: backend.pressCommand("undo")
+    }
+
+    Shortcut {
+        sequence: "Ctrl+M"
+        context: Qt.ApplicationShortcut
+        onActivated: backend.toggleEntryMode()
+    }
+
+    Shortcut {
         sequence: "Ctrl+Q"
         context: Qt.ApplicationShortcut
         onActivated: win.close()
@@ -74,31 +84,65 @@ ApplicationWindow {
     Item {
         id: face
         anchors.fill: parent
-        anchors.margins: win.scaledSize(20)
+        anchors.margins: win.scaledSize(16)
         focus: true
 
+        // The physical keyboard drives commands directly rather than pretending
+        // to press keycaps: shift planes are reached with Alt (left) and
+        // Ctrl+Alt (right), which no keycap can express.
         Keys.onPressed: function(event) {
-            if (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
-                return;
+            if (event.modifiers & Qt.ControlModifier) {
+                return;  // reserved for the Shortcuts above
+            }
 
-            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                    || event.text === "=") {
-                backend.pressKey("=");
+            var command = "";
+            if (event.modifiers & Qt.AltModifier) {
+                switch (event.text.toLowerCase()) {
+                case "s": command = "sqrt"; break;
+                case "q": command = "sq"; break;
+                case "l": command = "ln"; break;
+                case "e": command = "exp"; break;
+                case "g": command = "log"; break;
+                case "i": command = "inv"; break;
+                case "p": command = "pi"; break;
+                case "a": command = "abs"; break;
+                default: return;
+                }
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                command = "enter";
             } else if (event.key === Qt.Key_Backspace) {
-                backend.pressKey("backspace");
-            } else if (event.key === Qt.Key_Escape || event.key === Qt.Key_Delete) {
-                backend.pressKey("clear");
+                command = "backspace";
+            } else if (event.key === Qt.Key_Delete) {
+                command = "clear_entry";
+            } else if (event.key === Qt.Key_Escape) {
+                command = "clear";
+            } else if (event.key === Qt.Key_Space) {
+                command = "spc";
             } else if (event.text === "," || event.text === ".") {
-                backend.pressKey(".");
+                command = ".";
+            } else if (event.text === "=") {
+                command = "enter";
             } else if (event.text === "s" || event.text === "S") {
-                backend.pressKey("sign");
-            } else if (event.text === "c" || event.text === "C") {
-                backend.pressKey("clear");
-            } else if (/^[0-9+\-*/%]$/.test(event.text)) {
-                backend.pressKey(event.text);
+                command = "chs";
+            } else if (event.text === "e" || event.text === "E") {
+                command = "eex";
+            } else if (event.text === "x" || event.text === "X") {
+                command = "swap";
+            } else if (event.text === "r" || event.text === "R") {
+                command = "rot";
+            } else if (event.text === "d" || event.text === "D") {
+                command = "drop";
+            } else if (event.text === "^") {
+                command = "pow";
+            } else if (/^[0-9]$/.test(event.text)) {
+                command = event.text;
+            } else if (/^[+\-*\/%]$/.test(event.text)) {
+                command = event.text === "%" ? "percent" : event.text;
             } else {
                 return;
             }
+
+            backend.pressCommand(command);
             event.accepted = true;
         }
 
@@ -110,31 +154,70 @@ ApplicationWindow {
             anchors.bottom: divider.top
             anchors.leftMargin: win.scaledSize(8)
             anchors.rightMargin: win.scaledSize(8)
-            anchors.bottomMargin: win.scaledSize(24)
+            anchors.bottomMargin: win.scaledSize(14)
 
-            Text {
-                id: expressionText
+            StatusBar {
+                id: statusBar
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
-                text: backend.expression
-                color: win.mutedColor
-                elide: Text.ElideLeft
-                font.family: "iA Writer Mono S"
-                font.pixelSize: win.scaledSize(21)
+                angleMode: backend.angleMode
+                numberFormat: backend.numberFormatLabel
+                entryMode: backend.rpnMode ? "RPN" : "ALG"
+                errorText: backend.errorText
+                mutedColor: win.mutedColor
+                fontPixelSize: win.scaledSize(13)
             }
 
-            Text {
-                anchors.bottom: parent.bottom
+            // RPN: the stack, level 1 at the bottom, command line beneath it. Named
+            // RpnStackView because QtQuick.Controls already owns "StackView".
+            RpnStackView {
+                anchors.top: statusBar.bottom
+                anchors.topMargin: win.scaledSize(6)
                 anchors.left: parent.left
                 anchors.right: parent.right
-                horizontalAlignment: Text.AlignRight
-                text: backend.display
-                color: win.inkColor
-                fontSizeMode: Text.HorizontalFit
-                minimumPixelSize: win.scaledSize(22)
-                font.family: "iA Writer Mono S"
-                font.pixelSize: win.scaledSize(76)
+                anchors.bottom: parent.bottom
+                visible: backend.rpnMode
+                lines: backend.stackLines
+                commandLine: backend.commandLine
+                entering: backend.entering
+                inkColor: win.inkColor
+                mutedColor: win.mutedColor
+                fontPixelSize: win.scaledSize(20)
+                rowSpacing: win.scaledSize(3)
+            }
+
+            // ALG: omacalc's own expression-above-result pair, unchanged.
+            Item {
+                anchors.top: statusBar.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                visible: !backend.rpnMode
+
+                Text {
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    text: backend.expression
+                    color: win.mutedColor
+                    elide: Text.ElideLeft
+                    font.family: "iA Writer Mono S"
+                    font.pixelSize: win.scaledSize(21)
+                }
+
+                Text {
+                    anchors.bottom: parent.bottom
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    horizontalAlignment: Text.AlignRight
+                    text: backend.display
+                    color: win.inkColor
+                    fontSizeMode: Text.HorizontalFit
+                    minimumPixelSize: win.scaledSize(22)
+                    font.family: "iA Writer Mono S"
+                    font.pixelSize: win.scaledSize(64)
+                }
             }
         }
 
@@ -143,55 +226,54 @@ ApplicationWindow {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: keypad.top
-            anchors.bottomMargin: win.scaledSize(22)
+            anchors.bottomMargin: win.scaledSize(14)
             height: 1
             color: win.mixColors(win.pageColor, win.inkColor, 0.16)
         }
 
-        GridLayout {
+        // The 50g's lower keyboard: seven rows of five, same face in both modes,
+        // exactly as the real calculator does it.
+        ColumnLayout {
             id: keypad
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            height: Math.round(parent.height * 0.68)
-            columns: 4
-            rowSpacing: win.scaledSize(12)
-            columnSpacing: win.scaledSize(12)
+            height: Math.round(parent.height * 0.70)
+            spacing: win.scaledSize(7)
 
             Repeater {
-                model: [
-                    { label: "AC", key: "clear", kind: "number" },
-                    { label: "±", key: "sign", kind: "number" },
-                    { label: "%", key: "%", kind: "number" },
-                    { label: "÷", key: "÷", kind: "operator" },
-                    { label: "7", key: "7", kind: "number" },
-                    { label: "8", key: "8", kind: "number" },
-                    { label: "9", key: "9", kind: "number" },
-                    { label: "×", key: "×", kind: "operator" },
-                    { label: "4", key: "4", kind: "number" },
-                    { label: "5", key: "5", kind: "number" },
-                    { label: "6", key: "6", kind: "number" },
-                    { label: "−", key: "-", kind: "operator" },
-                    { label: "1", key: "1", kind: "number" },
-                    { label: "2", key: "2", kind: "number" },
-                    { label: "3", key: "3", kind: "number" },
-                    { label: "+", key: "+", kind: "operator" },
-                    { label: "0", key: "0", kind: "number" },
-                    { label: ".", key: ".", kind: "number" },
-                    { label: "", key: "backspace", kind: "number", icon: "backspace" },
-                    { label: "=", key: "=", kind: "equals" }
-                ]
+                model: backend.keyRows
 
-                CalcButton {
+                RowLayout {
+                    required property var modelData
+
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    label: modelData.label
-                    keyValue: modelData.key
-                    kind: modelData.kind
-                    iconName: modelData.icon === undefined ? "" : modelData.icon
-                    pageColor: win.pageColor
-                    inkColor: win.inkColor
-                    onActivated: backend.pressKey(keyValue)
+                    spacing: win.scaledSize(7)
+
+                    Repeater {
+                        model: parent.modelData
+
+                        CalcButton {
+                            required property var modelData
+
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            label: modelData.label
+                            keyValue: modelData.keyId
+                            kind: modelData.style
+                            iconName: modelData.icon
+                            labelLeft: modelData.labelLeft
+                            labelRight: modelData.labelRight
+                            alphaLabel: modelData.alpha
+                            live: modelData.live
+                            armedShift: backend.shiftState
+                            pageColor: win.pageColor
+                            inkColor: win.inkColor
+                            legendPixelSize: win.scaledSize(9)
+                            onActivated: backend.pressKeyId(modelData.keyId)
+                        }
+                    }
                 }
             }
         }
@@ -231,8 +313,8 @@ ApplicationWindow {
             if (geometry.maximized) showMaximized();
         } else {
             // First run: open at the design size, grown by the desktop text scale.
-            width = Math.round(400 * backend.textScale);
-            height = Math.round(568 * backend.textScale);
+            width = Math.round(420 * backend.textScale);
+            height = Math.round(760 * backend.textScale);
         }
     }
 
