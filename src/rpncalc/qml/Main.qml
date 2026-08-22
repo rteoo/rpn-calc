@@ -7,9 +7,9 @@ import QtQuick.Window
 ApplicationWindow {
     id: win
     width: 420
-    height: 760
+    height: 820
     minimumWidth: 330
-    minimumHeight: 600
+    minimumHeight: 640
     visible: true
     title: "rpn-calc"
 
@@ -18,8 +18,9 @@ ApplicationWindow {
     readonly property color inkColor: backend.themeForeground
     // Every hardcoded size is expressed at the 420 x 760 design size; resizing
     // the window scales the whole face with it. The design size is taller than
-    // omacalc's because the 50g keyboard is seven rows, not five.
-    readonly property real uiScale: Math.min(width / 420, height / 760)
+    // omacalc's because the 50g keyboard is seven rows, not five, plus the
+    // navigation row the stack browser needs.
+    readonly property real uiScale: Math.min(width / 420, height / 820)
     property real appliedTextScale: backend.textScale
 
     Connections {
@@ -108,6 +109,19 @@ ApplicationWindow {
                 case "a": command = "abs"; break;
                 default: return;
                 }
+            } else if (event.key >= Qt.Key_F1 && event.key <= Qt.Key_F6) {
+                // The soft keys, in the position the calculator puts them.
+                backend.pressMenu(event.key - Qt.Key_F1);
+                event.accepted = true;
+                return;
+            } else if (event.key === Qt.Key_Up) {
+                command = "up";
+            } else if (event.key === Qt.Key_Down) {
+                command = "down";
+            } else if (event.key === Qt.Key_Left) {
+                command = "left";
+            } else if (event.key === Qt.Key_Right) {
+                command = "right";
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                 command = "enter";
             } else if (event.key === Qt.Key_Backspace) {
@@ -176,15 +190,30 @@ ApplicationWindow {
                 anchors.topMargin: win.scaledSize(6)
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.bottom: parent.bottom
+                anchors.bottom: softMenu.showing ? softMenu.top : parent.bottom
+                anchors.bottomMargin: softMenu.showing ? win.scaledSize(6) : 0
                 visible: backend.rpnMode
                 lines: backend.stackLines
                 commandLine: backend.commandLine
                 entering: backend.entering
+                cursorLevel: backend.cursorLevel
                 inkColor: win.inkColor
                 mutedColor: win.mutedColor
                 fontPixelSize: win.scaledSize(20)
                 rowSpacing: win.scaledSize(3)
+            }
+
+            SoftMenu {
+                id: softMenu
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                labels: backend.rpnMode ? backend.menuLabels : []
+                enabled: backend.menuEnabled
+                pageColor: win.pageColor
+                inkColor: win.inkColor
+                fontPixelSize: win.scaledSize(12)
+                onActivated: function(index) { backend.pressMenu(index); }
             }
 
             // ALG: omacalc's own expression-above-result pair, unchanged.

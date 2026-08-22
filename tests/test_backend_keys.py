@@ -252,3 +252,83 @@ class TestClipboard:
     def test_copy_of_an_empty_stack_is_empty(self, backend, clipboard):
         backend.copyResult()
         assert clipboard.text() == ""
+
+
+class TestInteractiveStack:
+    """The stack browser as QML sees it: a cursor level and a soft menu."""
+
+    def build(self, backend):
+        press_ids(backend, "1 0 enter 1 0 enter 2 0 enter 3 0 enter")
+        assert backend.stackLines == ["30", "20", "10", "10"]
+
+    def test_closed_by_default(self, backend):
+        self.build(backend)
+        assert backend.cursorLevel == 0
+        assert backend.menuLabels == []
+
+    def test_the_stk_key_opens_the_browser(self, backend):
+        self.build(backend)
+        backend.pressKeyId("stk")
+        assert backend.cursorLevel == 1
+        assert backend.menuLabels == ["ECHO", "VIEW", "EDIT", "PICK", "ROLL", "ROLLD"]
+
+    def test_the_up_key_opens_and_walks(self, backend):
+        self.build(backend)
+        for _ in range(3):
+            backend.pressKeyId("up")
+        assert backend.cursorLevel == 3
+
+    def test_pick_from_the_soft_menu(self, backend):
+        self.build(backend)
+        for _ in range(4):
+            backend.pressKeyId("up")
+        backend.pressMenu(3)  # PICK
+        assert backend.stackLines == ["10", "30", "20", "10", "10"]
+        assert backend.cursorLevel == 4
+
+    def test_roll_from_the_soft_menu(self, backend):
+        self.build(backend)
+        for _ in range(3):
+            backend.pressKeyId("up")
+        backend.pressMenu(4)  # ROLL
+        assert backend.stackLines == ["10", "30", "20", "10"]
+
+    def test_view_is_disabled(self, backend):
+        self.build(backend)
+        backend.pressKeyId("stk")
+        assert backend.menuEnabled == [True, False, True, True, True, True]
+        before = backend.stackLines
+        backend.pressMenu(1)
+        assert backend.stackLines == before
+
+    def test_enter_closes_the_browser(self, backend):
+        self.build(backend)
+        press_ids(backend, "up up enter")
+        assert backend.cursorLevel == 0
+        assert backend.menuLabels == []
+
+    def test_arrows_do_nothing_in_algebraic_mode(self, backend):
+        backend.toggleEntryMode()
+        for key_id in ("up", "down", "left", "right", "stk"):
+            backend.pressKeyId(key_id)
+        assert backend.cursorLevel == 0
+        assert backend.menuLabels == []
+        assert backend.display == "0"
+
+    def test_switching_mode_closes_the_browser(self, backend):
+        self.build(backend)
+        press_ids(backend, "up up")
+        assert backend.cursorLevel == 2
+        backend.toggleEntryMode()
+        assert backend.cursorLevel == 0
+        backend.toggleEntryMode()
+        # The stack survived; only the cursor was put away.
+        assert backend.stackLines == ["30", "20", "10", "10"]
+        assert backend.cursorLevel == 0
+
+    def test_soft_menu_is_ignored_when_no_menu_is_showing(self, backend):
+        self.build(backend)
+        before = backend.stackLines
+        for index in range(6):
+            backend.pressMenu(index)
+        assert backend.stackLines == before

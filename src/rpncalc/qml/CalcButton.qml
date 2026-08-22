@@ -136,7 +136,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             horizontalAlignment: Text.AlignHCenter
             visible: control.iconName === "" && control.kind !== "shift_left"
-                     && control.kind !== "shift_right"
+                     && control.kind !== "shift_right" && control.label !== ""
             text: control.label
             color: cap.capInk
             elide: Text.ElideRight
@@ -189,6 +189,47 @@ Item {
                 function onWidthChanged() { shiftIcon.requestPaint(); }
                 function onHeightChanged() { shiftIcon.requestPaint(); }
                 function onCapInkChanged() { shiftIcon.requestPaint(); }
+            }
+        }
+
+        // Direction arrows, drawn for the same reason the shift arrows are:
+        // the glyphs do not exist in the bundled font.
+        Canvas {
+            id: arrowIcon
+            anchors.centerIn: parent
+            width: Math.round(Math.min(parent.height, parent.width) * 0.34)
+            height: width
+            visible: ["up", "down", "left", "right"].indexOf(control.iconName) !== -1
+
+            onPaint: {
+                var context = getContext("2d");
+                var w = width;
+                var h = height;
+                context.clearRect(0, 0, w, h);
+                context.fillStyle = String(cap.capInk);
+                context.beginPath();
+                switch (control.iconName) {
+                case "up":
+                    context.moveTo(w / 2, 0); context.lineTo(w, h); context.lineTo(0, h);
+                    break;
+                case "down":
+                    context.moveTo(w / 2, h); context.lineTo(w, 0); context.lineTo(0, 0);
+                    break;
+                case "left":
+                    context.moveTo(0, h / 2); context.lineTo(w, 0); context.lineTo(w, h);
+                    break;
+                default:
+                    context.moveTo(w, h / 2); context.lineTo(0, 0); context.lineTo(0, h);
+                }
+                context.closePath();
+                context.fill();
+            }
+
+            Connections {
+                target: cap
+                function onWidthChanged() { arrowIcon.requestPaint(); }
+                function onHeightChanged() { arrowIcon.requestPaint(); }
+                function onCapInkChanged() { arrowIcon.requestPaint(); }
             }
         }
 

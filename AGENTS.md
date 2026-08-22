@@ -60,6 +60,26 @@ The command-line-open vs command-line-empty distinction is the whole design:
 - `%` is an ordinary binary function: `200 ENTER 10 %` is `20`, depth 1.
 - Angle mode is applied only at the trig boundary.
 
+## The interactive stack
+
+The 50g's stack browser, opened with the up arrow. A cursor walks the levels and
+the soft menu acts on whichever one it sits on. Behaviour was read off a recording
+of the real calculator, not recalled:
+
+- `▲` opens it on level 1; `▲`/`▼` move the cursor, `▼` off level 1 closes it.
+- **PICK** copies the selected level to level 1 and leaves the cursor on the same
+  level *number* — the objects shift up underneath it rather than the pointer
+  chasing the one it acted on. This is the detail worth not regressing.
+- **ROLL** moves the selected level to level 1; **ROLLD** sends level 1 back down.
+- **ECHO** appends the selected value to the command line, stack untouched.
+- **EDIT** lifts the level off the stack into the command line and closes the browser.
+- `←` drops the selected level; emptying the stack closes the browser.
+- While it is open it owns the keyboard: arithmetic and digits are ignored, so a
+  mistyped key cannot rearrange a stack mid-reorganisation.
+- **VIEW** is a full-screen object viewer, which tells you nothing about a plain
+  number that its own line does not. Declared unimplemented and rendered dimmed.
+- Algebraic mode has no stack to browse, so the arrows and menu do nothing there.
+
 ## Faceplate
 
 Geometry comes from `HP 50g/50G.kml`; legends were transcribed from `HP 50g/50G.bmp`.
@@ -71,14 +91,25 @@ series).
 command the engine implements. The keyboard and the engine were built separately; that is
 the seam where a key looks live and does nothing.
 
-Two deliberate deviations, both forced by having no soft menus:
+Deliberate deviations, all forced by the reduced feature set:
 - the `X` key carries the stack commands (SWAP / ROT / OVER) the 50g keeps in its STACK menu;
-- left-shift `DEL` clears the command line rather than editing text.
+- left-shift `DEL` clears the command line rather than editing text;
+- the navigation row (`STK ▲ ▼ ◀ ▶`) is flattened into one row; the 50g keeps these
+  as a cluster beside APPS/MODE/TOOL, none of which are on this face. `STK` is ours;
+- `◀`/`▶` jump the cursor to level 1 and to the deepest level. The 50g reserves them
+  for editing wide objects, which this calculator does not have;
+- the soft-menu labels are themselves the buttons, drawn at the bottom of the display.
+  The 50g labels them on-screen with six unlabelled keys beneath; there is no room for
+  another key row here. `F1`–`F6` press them from the keyboard.
+
+Anything drawn rather than typeset (shift arrows, direction arrows, the backspace
+icon, the stack cursor) is drawn because iA Writer Mono has no glyph for it. Check
+before adding a symbol to a cap — the font is missing more than you would expect.
 
 ## Known gaps
 
 No CAS, no soft menus (F1–F6), no ALPHA entry, no symbolic variables, no units, no complex
-numbers, no matrices, no interactive stack, no equation writer. `EVAL`, `'`, `SYMB`, and
+numbers, no matrices, no equation writer. `EVAL`, `'`, `SYMB`, and
 `ALPHA` keep their real legends and are rendered dimmed rather than stubbed.
 
 ## Rules

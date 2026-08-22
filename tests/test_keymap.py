@@ -5,13 +5,13 @@ from rpncalc.keymap import KEY_ROWS, KEYS_BY_ID, Shift, ShiftState, resolve
 
 class TestGrid:
     def test_shape_matches_the_faceplate(self):
-        # Seven rows of five, per 50G.kml's y-offsets 347..582.
-        assert len(KEY_ROWS) == 7
+        # A navigation row, then seven faceplate rows of five per 50G.kml.
+        assert len(KEY_ROWS) == 8
         assert all(len(row) == 5 for row in KEY_ROWS)
 
     def test_key_ids_are_unique(self):
         ids = [k.key_id for row in KEY_ROWS for k in row]
-        assert len(ids) == len(set(ids)) == 35
+        assert len(ids) == len(set(ids)) == 40
 
     def test_digits_and_core_input_are_present(self):
         for digit in "0123456789":
@@ -40,6 +40,11 @@ class TestGrid:
         for key in KEYS_BY_ID.values():
             if key.key_id not in dead:
                 assert key.is_live(), f"{key.key_id} has no action in any plane"
+
+    def test_the_navigation_row_leads(self):
+        nav = [k.key_id for k in KEY_ROWS[0]]
+        assert nav == ["stk", "up", "down", "left", "right"]
+        assert all(KEYS_BY_ID[k].style == "nav" for k in nav)
 
     def test_shift_keys_are_styled_for_the_faceplate(self):
         assert KEYS_BY_ID["shift_left"].style == "shift_left"
