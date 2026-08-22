@@ -112,6 +112,43 @@ No CAS, no soft menus (F1–F6), no ALPHA entry, no symbolic variables, no units
 numbers, no matrices, no equation writer. `EVAL`, `'`, `SYMB`, and
 `ALPHA` keep their real legends and are rendered dimmed rather than stubbed.
 
+## Validating the calculation core
+
+```sh
+.venv/Scripts/python.exe tools/verify_core.py
+```
+
+Runs the suite under branch coverage and **fails if `numeric.py`, `stack.py`,
+`rpn_engine.py`, `alg_engine.py` or `keymap.py` drops below 100% of statements
+and branches.** The Qt layer is tested but not gated - it is property plumbing,
+and what matters there is covered by `tests/test_backend_keys.py`.
+
+Coverage is the floor, not the evidence. Three things carry the actual weight:
+
+- **`tests/oracle.py`** recomputes every result in 50-digit `decimal`, with the
+  trigonometric functions built from Taylor series rather than a library call.
+  Checking `math` against `math` would only prove the engine calls the function
+  it says it calls. The oracle itself is validated against `math` first - if it
+  ever disagrees by more than ~1e-16, fix the oracle before suspecting the engine.
+- **`tests/test_core_properties.py::TestCrossEngine`** feeds the same expression
+  to the RPN engine and the algebraic engine and to Python's own evaluator. They
+  share only `numeric.py`, so agreement is three independent paths landing
+  together.
+- **Property tests** over generated input, which is what found the denormal
+  formatting crash and the tie-breaking inconsistency. Nobody writes `5e-324`
+  into an example table.
+
+Two rules for this area:
+
+- **Convert floats to `Decimal(value)`, never `Decimal(repr(value))`.** The first
+  is the number the engine actually held; the second is its shortest printed
+  form. Asking what the engine should have returned for a number it never had
+  produces failures that are the test's fault.
+- **Display rounding is half away from zero**, explicitly, in `numeric._quantise`.
+  Python and IEEE round half to even, which is right for sums and wrong for a
+  display - a calculator shows 2.5 as 3. The three formats disagreed about this
+  until it became a decision.
+
 ## Packaging
 
 `tools/build_exe.py` drives PyInstaller through `packaging/rpncalc.spec`.

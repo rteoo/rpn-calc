@@ -43,15 +43,22 @@ class TestDisplayFormats:
         "mode, digits, value, expected",
         [
             (FIX, 2, 1 / 3, "0.33"),
-            (FIX, 0, 2.5, "2"),  # banker's rounding, as the C library does
+            (FIX, 0, 2.5, "3"),  # half away from zero, as a calculator rounds
+            (FIX, 0, 3.5, "4"),
+            (FIX, 1, 0.25, "0.3"),
             (FIX, 3, -0.0001, "0.000"),  # negative zero never survives display
             (FIX, 2, 1e13, "1.00E13"),  # too wide for fixed: falls back to SCI
-            (SCI, 3, 12345, "1.234E4"),
+            (SCI, 3, 12345, "1.235E4"),
             (SCI, 2, 0.000123, "1.23E-4"),
             (ENG, 3, 12345, "12.35E3"),  # exponent snaps to a multiple of 3
             (ENG, 3, 0.000123, "123.0E-6"),
             (ENG, 3, 999999, "1.000E6"),  # rounding up moves to the next decade
             (ENG, 3, 0, "0.000E0"),
+            # The ends of the double range: scaling by a power of ten used to
+            # divide by zero here and take the display down with it.
+            (ENG, 3, 5e-324, "4.941E-324"),
+            (SCI, 3, 5e-324, "4.941E-324"),
+            (ENG, 3, 1.7976931348623157e308, "179.8E306"),
         ],
     )
     def test_formats(self, mode, digits, value, expected):
