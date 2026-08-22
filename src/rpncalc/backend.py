@@ -26,7 +26,7 @@ from PySide6.QtGui import QColor, QGuiApplication
 from . import alg_engine
 from .keymap import KEY_ROWS, Shift, ShiftState, resolve
 from .numeric import ENG, FIX, SCI, STD, NumberFormat, parse_number
-from .rpn_engine import RpnEngine
+from .rpn_engine import DEFAULT_ANGLE_MODE, RpnEngine
 
 _WINDOW_GEOMETRY_SETTING = "window/geometry"
 _WINDOW_MAXIMIZED_SETTING = "window/maximized"
@@ -34,7 +34,7 @@ _RPN_MODE_SETTING = "mode/rpn"
 _ANGLE_MODE_SETTING = "mode/angle"
 _FORMAT_MODE_SETTING = "mode/format"
 _FORMAT_DIGITS_SETTING = "mode/formatDigits"
-_DEFAULT_ANGLE_MODE = "RAD"
+
 
 # RPN command ids that mean something to the algebraic engine too. The 50g uses
 # one keyboard for both modes, so the keypad never changes shape - keys that
@@ -162,7 +162,8 @@ class Backend(QObject):
     def copyResult(self) -> None:
         clipboard = QGuiApplication.clipboard()
         if clipboard is not None:
-            clipboard.setText(self._engine.display)
+            clipboard.setText(
+                self._rpn.copy_text() if self._rpn_mode else self._engine.display)
 
     @Slot()
     def pasteNumber(self) -> None:
@@ -177,8 +178,14 @@ class Backend(QObject):
         if value is None:
             return
 
-        self._engine.paste_value(value)
-        self.calculationChanged.emit()
+        # Both engines are live at once, so paste has to reach the one on
+        # screen - otherwise Ctrl+V lands in an invisible buffer.
+        if self._rpn_mode:
+            self._rpn.paste_value(value)
+            self.stackChanged.emit()
+        else:
+            self._engine.paste_value(value)
+            self.calculationChanged.emit()
 
     @Slot(result="QVariantMap")
     def windowGeometry(self) -> dict:
@@ -332,7 +339,7 @@ class Backend(QObject):
     def _load_modes(self) -> None:
         settings = QSettings()
         self._rpn_mode = settings.value(_RPN_MODE_SETTING, True, type=bool)
-        angle = settings.value(_ANGLE_MODE_SETTING, _DEFAULT_ANGLE_MODE, type=str)
+        angle = settings.value(_ANGLE_MODE_SETTING, DEFAULT_ANGLE_MODE, type=str)
         mode = settings.value(_FORMAT_MODE_SETTING, STD, type=str)
         digits = settings.value(_FORMAT_DIGITS_SETTING, 3, type=int)
         # Settings are user-editable text, so a bad value must not stop the app
@@ -342,7 +349,7 @@ class Backend(QObject):
         try:
             self._rpn.set_angle_mode(angle)
         except ValueError:
-            self._rpn.set_angle_mode(_DEFAULT_ANGLE_MODE)
+            self._rpn.set_angle_mode(DEFAULT_ANGLE_MODE)
         try:
             self._rpn.set_number_format(NumberFormat(mode, digits))
         except ValueError:

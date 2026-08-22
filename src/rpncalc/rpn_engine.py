@@ -23,6 +23,11 @@ _NORMALIZE = {"−": "-", "×": "*", "÷": "/"}
 
 _DIGITS = set("0123456789")
 
+# The mode a fresh calculator starts in. `backend.py` imports this so a saved
+# setting and a missing one cannot disagree about the default.
+DEFAULT_ANGLE_MODE = "RAD"
+ANGLE_MODES = ("DEG", "RAD")
+
 
 class CalcError(Exception):
     """A math error that is not stack underflow: infinite/undefined results
@@ -71,7 +76,7 @@ class RpnEngine:
         self.stack = RpnStack()
         # None = command line closed. A str (possibly "") = open for entry.
         self.command_line: str | None = None
-        self.angle_mode = "DEG"
+        self.angle_mode = DEFAULT_ANGLE_MODE
         self.number_format = NumberFormat()
         self.error: str | None = None
         # Engine-level UNDO: a snapshot of the whole stack taken before the
@@ -91,7 +96,7 @@ class RpnEngine:
         return [format_number(v, self.number_format) for v in self.stack.to_list()]
 
     def set_angle_mode(self, mode: str) -> None:
-        if mode not in ("DEG", "RAD"):
+        if mode not in ANGLE_MODES:
             raise ValueError(f"unknown angle mode: {mode!r}")
         self.angle_mode = mode
 
@@ -127,6 +132,8 @@ class RpnEngine:
             self.error = str(exc)
 
     def _dispatch(self, key: str) -> None:
+        if not self.knows(key):
+            return  # an unbound key is a no-op, never a crash
         if key in _DIGITS or key in (".", "eex"):
             self._handle_entry_key(key)
         elif key == "enter":
@@ -147,10 +154,12 @@ class RpnEngine:
             # Every operator, function, and stack command: implicit ENTER of
             # any open command line first, then apply. This is the one rule
             # that makes "3 SPC 4 +" and "clicking [+] mid-entry" both work.
-            snapshot = self.stack.to_list()
+            # Recorded before the commit, not after the command: a command
+            # that errors has still entered the command line onto the stack,
+            # and UNDO has to take that back too.
+            self._undo_snapshot = self.stack.to_list()
             self._commit_entry()
             self._apply_command(key)
-            self._undo_snapshot = snapshot
 
     # -- command-line editing ------------------------------------------------
 
@@ -171,8 +180,9 @@ class RpnEngine:
             if "E" not in self.command_line:  # only one exponent marker
                 self.command_line += "E"
         elif key == ".":
-            mantissa_part = self.command_line.split("E")[0]
-            if "." not in mantissa_part:  # only one decimal point
+            if "E" in self.command_line:
+                return  # exponents are whole numbers; the 50g ignores the key
+            if "." not in self.command_line:  # only one decimal point
                 self.command_line += "."
         else:
             self.command_line += key
@@ -217,6 +227,7 @@ class RpnEngine:
     def _handle_clear_entry(self) -> None:
         """CANCEL/DEL: abandon what is being typed, leave the stack alone."""
         self.command_line = None
+
     def _handle_undo(self) -> None:
         if self._undo_snapshot is None:
             return
@@ -225,15 +236,33 @@ class RpnEngine:
             self.stack.push(value)
         self._undo_snapshot = None  # single-level UNDO, like the 50g's UNDO key
 
+    def paste_value(self, value: float) -> None:
+        """Adopt a pasted number as a new level 1, as if it had been entered."""
+        if not math.isfinite(value):
+            raise CalcError("Infinite Result")
+        self._undo_snapshot = self.stack.to_list()
+        self.command_line = None
+        self.stack.push(value)
+
+    def copy_text(self) -> str:
+        """What Ctrl+C should take: whatever the eye is on."""
+        if self.command_line is not None:
+            return self.command_line
+        if self.stack.depth:
+            return format_number(self.stack.peek(1), self.number_format)
+        return ""
+
     def _commit_entry(self) -> None:
         """Parse the open command line (SPC-separated -> one push per token,
         left to right) and close it. No-op if the command line is closed.
         """
         if self.command_line is None:
             return
-        tokens = self.command_line.split()
-        for token in tokens:
-            self.stack.push(_parse_token(token))
+        # Parse everything before pushing anything: an entry like "1 2 1E999"
+        # must not leave half its numbers on the stack.
+        values = [_parse_token(token) for token in self.command_line.split()]
+        for value in values:
+            self.stack.push(value)
         self.command_line = None
 
     # -- operators, functions, stack commands --------------------------------
@@ -265,14 +294,14 @@ class RpnEngine:
             self._pick()
         elif key == "depth":
             self.stack.depth_command()
-        else:
+        else:  # pragma: no cover - _dispatch filters unknown keys first
             raise ValueError(f"unknown key id: {key!r}")
 
     def _apply_unary(self, fn) -> None:
         if self.stack.depth < 1:
             raise StackError("Too Few Arguments")
         x = self.stack.peek(1)
-        result = fn(x)  # may raise CalcError; stack untouched until it doesn't
+        result = self._evaluate(fn, x)  # raises before the stack is touched
         self.stack.pop()
         self.stack.push(result)
 
@@ -281,10 +310,31 @@ class RpnEngine:
             raise StackError("Too Few Arguments")
         b = self.stack.peek(1)
         a = self.stack.peek(2)
-        result = fn(a, b)
+        result = self._evaluate(fn, a, b)
         self.stack.pop()
         self.stack.pop()
         self.stack.push(result)
+
+    @staticmethod
+    def _evaluate(fn, *args: float) -> float:
+        """Run a calculator function and let only a finite float out.
+
+        Every function goes through here rather than guarding itself, because
+        the per-function version was easy to forget: x squared pushed inf onto
+        the stack, which then made the whole display unrenderable, and e^x's
+        own guard was unreachable because math.exp raises before returning.
+        """
+        try:
+            result = fn(*args)
+        except OverflowError:
+            raise CalcError("Infinite Result") from None
+        except ValueError:
+            raise CalcError("Invalid Input") from None
+        if isinstance(result, complex):
+            raise CalcError("Invalid Input")
+        if not math.isfinite(result):
+            raise CalcError("Infinite Result")
+        return result
 
     def _fn_percent(self, base: float, pct: float) -> float:
         """HP's %: level 2 times level 1 percent, consuming both operands."""
@@ -336,10 +386,7 @@ class RpnEngine:
         return math.log(x)
 
     def _fn_exp(self, x: float) -> float:
-        result = math.exp(x)
-        if not math.isfinite(result):
-            raise CalcError("Infinite Result")
-        return result
+        return math.exp(x)
 
     def _fn_log(self, x: float) -> float:
         if x <= 0:
@@ -347,13 +394,7 @@ class RpnEngine:
         return math.log10(x)
 
     def _fn_alog(self, x: float) -> float:
-        try:
-            result = 10.0**x
-        except OverflowError:
-            raise CalcError("Infinite Result") from None
-        if not math.isfinite(result):
-            raise CalcError("Infinite Result")
-        return result
+        return 10.0**x
 
     def _fn_sin(self, x: float) -> float:
         return math.sin(self._to_rad(x))
@@ -390,13 +431,13 @@ class RpnEngine:
     # -- binary functions -------------------------------------------------
 
     def _fn_add(self, a: float, b: float) -> float:
-        return self._finite_or_raise(a + b)
+        return a + b
 
     def _fn_sub(self, a: float, b: float) -> float:
-        return self._finite_or_raise(a - b)
+        return a - b
 
     def _fn_mul(self, a: float, b: float) -> float:
-        return self._finite_or_raise(a * b)
+        return a * b
 
     def _fn_div(self, a: float, b: float) -> float:
         if b == 0:
@@ -415,18 +456,10 @@ class RpnEngine:
         return value ** (1.0 / degree)
 
     def _fn_pow(self, a: float, b: float) -> float:
-        try:
-            result = a**b
-        except OverflowError:
-            raise CalcError("Infinite Result") from None
-        except ValueError:
-            # e.g. a negative base with a fractional exponent under the
-            # `math`-style real-only contract this engine keeps (no complex
-            # results reach the stack).
-            raise CalcError("Invalid Input") from None
-        if isinstance(result, complex):
-            raise CalcError("Invalid Input")
-        return self._finite_or_raise(result)
+        # A negative base with a fractional exponent goes complex in Python;
+        # _evaluate turns that into a domain error, since no complex value is
+        # allowed onto the stack.
+        return a**b
 
     def _fn_mod(self, a: float, b: float) -> float:
         # Judgment call: HP 50g's MOD has no published divide-by-zero wording
@@ -435,12 +468,6 @@ class RpnEngine:
         if b == 0:
             raise CalcError("Undefined Result" if a == 0 else "Infinite Result")
         return math.fmod(a, b)
-
-    @staticmethod
-    def _finite_or_raise(result: float) -> float:
-        if not math.isfinite(result):
-            raise CalcError("Infinite Result")
-        return result
 
 
 def _parse_token(token: str) -> float:
@@ -454,9 +481,16 @@ def _parse_token(token: str) -> float:
     sealed = seal_number(sealed)
     value = parse_number(sealed)
     if value is None:
-        # The entry keys only ever produce digits/'.'/'-'/'E', so this signals
-        # a bug in the entry-building logic above rather than bad user input.
-        raise CalcError("Invalid Input")
+        # parse_number rejects non-finite results, so an entry that simply
+        # overflowed lands here too - report that as overflow rather than as
+        # malformed input, which is what "1E999" actually is.
+        try:
+            float(sealed)
+        except ValueError:
+            # The entry keys only ever produce digits/'.'/'-'/'E', so this
+            # signals a bug in the entry-building logic rather than bad input.
+            raise CalcError("Invalid Input") from None
+        raise CalcError("Infinite Result") from None
     return value
 
 
