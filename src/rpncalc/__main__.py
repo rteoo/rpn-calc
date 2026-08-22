@@ -13,7 +13,19 @@ from PySide6.QtQuickControls2 import QQuickStyle
 from .backend import Backend
 from .systemtheme import SystemTheme
 
-_PACKAGE_DIR = Path(__file__).resolve().parent
+def _resource_dir() -> Path:
+    """Where the QML and fonts live.
+
+    A PyInstaller one-file build unpacks its data into a temporary directory
+    and points `sys._MEIPASS` at it, so `__file__` is not where the assets are.
+    """
+    bundle = getattr(sys, "_MEIPASS", None)
+    if bundle is not None:
+        return Path(bundle) / "rpncalc"
+    return Path(__file__).resolve().parent
+
+
+_PACKAGE_DIR = _resource_dir()
 
 
 def main() -> int:
