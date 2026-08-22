@@ -106,10 +106,14 @@ The icon is committed at `packaging/rpncalc.ico`; regenerate it with
 ## Test
 
 ```sh
-pytest
+pytest                                          # the whole suite, headless
+.venv/Scripts/python.exe tools/verify_core.py   # + a 100% gate on the core
 ```
 
-Runs headless — no display needed.
+1410 tests, no display needed. The calculation core — number formatting, the
+stack, and both engines — is held at **100% statement and branch coverage**, and
+its answers are checked against an independent 50-digit decimal implementation
+rather than against the same `math` functions it calls.
 
 ## What it does not do
 

@@ -455,6 +455,9 @@ class RpnEngine:
             result = fn(*args)
         except OverflowError:
             raise CalcError("Infinite Result") from None
+        except ZeroDivisionError:
+            # 0 ** -n. Python raises where IEEE-754 would say infinity.
+            raise CalcError("Infinite Result") from None
         except ValueError:
             raise CalcError("Invalid Input") from None
         if isinstance(result, complex):

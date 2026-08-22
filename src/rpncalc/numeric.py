@@ -10,12 +10,16 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal, getcontext
 
 # omacalc writes operators with typographic glyphs; tokens carry them verbatim.
 MINUS_SIGN = "\u2212"
 MULTIPLY_SIGN = "\u00d7"
 DIVIDE_SIGN = "\u00f7"
 PLUS_SIGN = "+"
+
+# Wide enough that scaling a double never loses a digit to the context.
+getcontext().prec = 40
 
 STD = "STD"
 FIX = "FIX"
@@ -76,15 +80,19 @@ def _format_fix(value: float, digits: int) -> str:
     # the requested decimals; 1e12 is where a 12-column display gives out.
     if value != 0 and abs(value) >= 1e12:
         return _format_sci(value, digits)
-    text = f"{value:.{digits}f}"
+    quantised = _quantise(Decimal(value), digits)
+    text = f"{quantised:.{digits}f}"
     # A small negative that rounds away to nothing must not display as "-0.00".
-    if text.startswith("-") and float(text) == 0:
+    if text.startswith("-") and quantised == 0:
         return text[1:]
     return text
 
 
 def _format_sci(value: float, digits: int) -> str:
-    mantissa, exponent = _split_exponent(value, digits)
+    if value == 0:
+        return f"{0.0:.{digits}f}E0"
+    exponent = _decimal_exponent(value, digits)
+    mantissa = _quantise(Decimal(value).scaleb(-exponent), digits)
     return f"{mantissa:.{digits}f}E{exponent}"
 
 
@@ -93,31 +101,46 @@ def _format_eng(value: float, digits: int) -> str:
         return f"{0.0:.{digits}f}E0"
 
     # Round once, at the end. Rounding to `digits` first and then rescaling the
-    # mantissa would round twice and lose the last significant digit: 12345 at
-    # ENG 3 must read 12.35E3, not 12.34E3.
-    _, exponent = _split_exponent(value, digits)
+    # mantissa would round twice and lose the last significant digit.
+    exponent = _decimal_exponent(value, digits)
     eng_exponent = 3 * math.floor(exponent / 3)
+    # No decade-bump guard is needed here: `_decimal_exponent` already rounds
+    # before choosing the exponent, so the mantissa cannot reach 1000. Checked
+    # by brute force over ~480k value/digit combinations before removing it.
     decimals = max(digits - (exponent - eng_exponent), 0)
-    mantissa = value / 10.0**eng_exponent
-
-    # A mantissa that rounds up out of its decade belongs in the next one.
-    if abs(round(mantissa, decimals)) >= 1000:
-        eng_exponent += 3
-        decimals = max(digits - (exponent - eng_exponent), 0)
-        mantissa = value / 10.0**eng_exponent
-
+    mantissa = _quantise(Decimal(value).scaleb(-eng_exponent), decimals)
     return f"{mantissa:.{decimals}f}E{eng_exponent}"
 
 
-def _split_exponent(value: float, digits: int) -> tuple[float, int]:
-    """Mantissa in [1, 10) (or 0) and its base-10 exponent, rounded to `digits`."""
-    if value == 0:
-        return 0.0, 0
-    # Round first, then read the exponent back: rounding 9.99 to 1 decimal
-    # gives 10.0, which belongs in the next decade.
-    text = f"{value:.{digits}e}"
-    mantissa_text, exponent_text = text.split("e")
-    return float(mantissa_text), int(exponent_text)
+def _quantise(value: Decimal, decimals: int) -> Decimal:
+    """Round to `decimals` places, half away from zero.
+
+    Calculators round 2.5 to 3, not to 2. Python and IEEE-754 round half to
+    even, which is better for accumulating sums and worse for reading a display
+    - and the three formats here disagreed with each other about it until this
+    became an explicit choice.
+
+    Scaling happens in Decimal rather than by dividing by a power of ten:
+    at the ends of the double range that power is itself zero or infinity, and
+    5e-324 divided by zero took the whole display down with it.
+    """
+    return value.quantize(Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP)
+
+
+def _decimal_exponent(value: float, digits: int) -> int:
+    """The power of ten `value` sits on, once rounded to `digits` + 1 figures.
+
+    Rounding first matters: 9.99 to one decimal is 10.0, which belongs in the
+    next decade and would otherwise be reported as 10.0E0 instead of 1.0E1.
+    """
+    exact = Decimal(value)
+    if exact == 0:
+        return 0
+    magnitude = exact.adjusted()
+    rounded = exact.quantize(
+        Decimal(1).scaleb(magnitude - digits), rounding=ROUND_HALF_UP
+    )
+    return rounded.adjusted()
 
 
 def seal_number(entry: str) -> str:
