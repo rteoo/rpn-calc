@@ -28,6 +28,17 @@ _DIGITS = set("0123456789")
 DEFAULT_ANGLE_MODE = "RAD"
 ANGLE_MODES = ("DEG", "RAD")
 
+# The interactive stack's soft menu, in F1..F6 order, exactly as the 50g draws
+# it. VIEW opens a full-screen object viewer, which says nothing a plain number
+# has not already said on its own line, so it stays unimplemented and dimmed.
+INTERACTIVE_MENU = ("ECHO", "VIEW", "EDIT", "PICK", "ROLL", "ROLLD")
+_INTERACTIVE_COMMANDS = {
+    "ist_echo", "ist_view", "ist_edit", "ist_pick", "ist_roll", "ist_rolld",
+    "ist_drop", "ist_exit", "ist_top", "ist_bottom",
+}
+_MENU_COMMANDS = ("ist_echo", "ist_view", "ist_edit", "ist_pick", "ist_roll",
+                  "ist_rolld")
+
 
 class CalcError(Exception):
     """A math error that is not stack underflow: infinite/undefined results
@@ -84,6 +95,9 @@ class RpnEngine:
         # only the single most recent low-level stack primitive - not enough
         # to undo "commit entry, then apply operator" as one user action).
         self._undo_snapshot: list[float] | None = None
+        # The interactive stack browser: None when closed, otherwise the level
+        # the cursor sits on (1 = level 1, counting up into the stack).
+        self.cursor_level: int | None = None
 
     # -- UI-facing surface -------------------------------------------------
 
@@ -119,6 +133,8 @@ class RpnEngine:
             or key in self._UNARY_METHODS
             or key in self._BINARY_METHODS
             or key in self._STACK_COMMANDS
+            or key in _INTERACTIVE_COMMANDS
+            or key in ("up", "down", "left", "right")
         )
 
     def press(self, key_id: str) -> None:
@@ -134,7 +150,13 @@ class RpnEngine:
     def _dispatch(self, key: str) -> None:
         if not self.knows(key):
             return  # an unbound key is a no-op, never a crash
-        if key in _DIGITS or key in (".", "eex"):
+        if key in ("up", "down", "left", "right"):
+            self._handle_arrow(key)
+        elif self.cursor_level is not None:
+            self._dispatch_interactive(key)
+        elif key in _INTERACTIVE_COMMANDS:
+            return  # menu keys mean nothing while the browser is closed
+        elif key in _DIGITS or key in (".", "eex"):
             self._handle_entry_key(key)
         elif key == "enter":
             self._handle_enter()
@@ -160,6 +182,111 @@ class RpnEngine:
             self._undo_snapshot = self.stack.to_list()
             self._commit_entry()
             self._apply_command(key)
+
+    # -- the interactive stack -----------------------------------------------
+    #
+    # The 50g's stack browser, reached with the up arrow: a cursor walks the
+    # levels and the soft menu acts on whichever one it sits on. This is the
+    # feature that makes a deep stack workable instead of something you have to
+    # unpick with SWAP and ROT.
+
+    def menu_labels(self) -> list[str]:
+        """The soft-menu row, or empty when no menu is showing."""
+        return list(INTERACTIVE_MENU) if self.cursor_level is not None else []
+
+    def menu_enabled(self) -> list[bool]:
+        return [self.knows_menu(i) for i in range(len(INTERACTIVE_MENU))]
+
+    def knows_menu(self, index: int) -> bool:
+        if self.cursor_level is None or not 0 <= index < len(_MENU_COMMANDS):
+            return False
+        return _MENU_COMMANDS[index] != "ist_view"  # VIEW is not implemented
+
+    def press_menu(self, index: int) -> None:
+        if self.knows_menu(index):
+            self.press(_MENU_COMMANDS[index])
+
+    def _handle_arrow(self, key: str) -> None:
+        if self.cursor_level is None:
+            # Up opens the browser on level 1, as pressing it on the 50g does.
+            # An empty stack has nothing to browse.
+            if key == "up" and self.stack.depth >= 1:
+                self.cursor_level = 1
+            return
+        if key == "up":
+            self.cursor_level = min(self.cursor_level + 1, self.stack.depth)
+        elif key == "down":
+            # Stepping below level 1 leaves the browser, which is the quickest
+            # way out and matches how the cursor got in.
+            if self.cursor_level == 1:
+                self.cursor_level = None
+            else:
+                self.cursor_level -= 1
+        elif key == "left":
+            self.cursor_level = 1
+        else:  # right - ours, not the 50g's: jump to the deepest level.
+            self.cursor_level = self.stack.depth
+
+    def _dispatch_interactive(self, key: str) -> None:
+        """While the browser is open it owns the keyboard.
+
+        Anything not part of browsing is ignored rather than applied, so a
+        mistyped key cannot silently rearrange a stack mid-reorganisation.
+        """
+        if key in ("enter", "clear_entry", "ist_exit"):
+            self.cursor_level = None
+        elif key == "backspace" or key == "ist_drop":
+            self._interactive_drop()
+        elif key == "ist_echo":
+            self._interactive_echo()
+        elif key == "ist_edit":
+            self._interactive_edit()
+        elif key == "ist_pick":
+            self._interactive_reorder(self.stack.pick, grows=True)
+        elif key == "ist_roll":
+            self._interactive_reorder(self.stack.roll, grows=False)
+        elif key == "ist_rolld":
+            self._interactive_reorder(self.stack.rolld, grows=False)
+
+    def _interactive_reorder(self, op, grows: bool) -> None:
+        level = self.cursor_level
+        assert level is not None
+        self._undo_snapshot = self.stack.to_list()
+        op(level)
+        # The cursor stays on the same level *number* rather than following the
+        # value it acted on - PICK shifts everything up by one, and the 50g
+        # leaves the pointer where it was rather than chasing the object.
+        self.cursor_level = min(level, self.stack.depth)
+
+    def _interactive_echo(self) -> None:
+        """Copy the selected level into the command line, leaving the stack."""
+        level = self.cursor_level
+        assert level is not None
+        text = format_number(self.stack.peek(level), self.number_format)
+        if self.command_line is None:
+            self.command_line = text
+        else:
+            self.command_line += " " + text
+
+    def _interactive_edit(self) -> None:
+        """Lift the selected level off the stack and into the command line."""
+        level = self.cursor_level
+        assert level is not None
+        self._undo_snapshot = self.stack.to_list()
+        value = self.stack.peek(level)
+        self.stack.roll(level)  # bring it to level 1 so it can be dropped
+        self.stack.drop()
+        self.command_line = format_number(value, self.number_format)
+        self.cursor_level = None
+
+    def _interactive_drop(self) -> None:
+        level = self.cursor_level
+        assert level is not None
+        self._undo_snapshot = self.stack.to_list()
+        self.stack.roll(level)
+        self.stack.drop()
+        # Browsing a stack that no longer has levels makes no sense.
+        self.cursor_level = min(level, self.stack.depth) or None
 
     # -- command-line editing ------------------------------------------------
 

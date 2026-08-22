@@ -223,6 +223,7 @@ class Backend(QObject):
         if self._rpn_mode == rpn_mode:
             return
         self._rpn_mode = rpn_mode
+        self._rpn.cursor_level = None
         self._shift.clear()
         self._save_modes()
         self.modeChanged.emit()
@@ -248,6 +249,28 @@ class Backend(QObject):
     commandLine = Property(str, _get_command_line, notify=stackChanged)
     entering = Property(bool, _get_entering, notify=stackChanged)
     errorText = Property(str, _get_error_text, notify=stackChanged)
+
+    def _get_cursor_level(self) -> int:
+        """The interactive stack cursor, or 0 when the browser is closed."""
+        return self._rpn.cursor_level or 0
+
+    def _get_menu_labels(self) -> list:
+        return self._rpn.menu_labels()
+
+    def _get_menu_enabled(self) -> list:
+        return self._rpn.menu_enabled()
+
+    cursorLevel = Property(int, _get_cursor_level, notify=stackChanged)
+    menuLabels = Property(list, _get_menu_labels, notify=stackChanged)
+    menuEnabled = Property(list, _get_menu_enabled, notify=stackChanged)
+
+    @Slot(int)
+    def pressMenu(self, index: int) -> None:
+        """A soft key, F1 to F6 left to right."""
+        if not self._rpn_mode:
+            return
+        self._rpn.press_menu(index)
+        self.stackChanged.emit()
 
     def _get_angle_mode(self) -> str:
         return self._rpn.angle_mode
@@ -277,7 +300,13 @@ class Backend(QObject):
                     "alpha": key.alpha,
                     "style": key.style,
                     "live": self._key_is_live(key),
-                    "icon": "backspace" if key.key_id == "backspace" else "",
+                    # iA Writer Mono has no arrow glyphs, so these caps are
+                    # drawn rather than typeset.
+                    "icon": (
+                        "backspace" if key.key_id == "backspace"
+                        else key.key_id if key.key_id in ("up", "down", "left", "right")
+                        else ""
+                    ),
                 })
             rows.append(cells)
         return rows
@@ -312,6 +341,8 @@ class Backend(QObject):
             self.stackChanged.emit()
             return
 
+        if command in ("up", "down", "left", "right") or command.startswith("ist_"):
+            return  # the stack browser has nothing to browse in algebraic mode
         key = command if command.isdigit() else _ALG_EQUIVALENT.get(command)
         if key is None:
             return

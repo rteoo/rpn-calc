@@ -56,13 +56,22 @@ def _k(*args, **kwargs) -> Key:
     return Key(*args, **kwargs)
 
 
-# Rows top to bottom, matching 50G.kml y-offsets 347/385/422/459/500/541/582.
+# The navigation row leads (the 50g keeps these as a cluster beside APPS/MODE/
+# TOOL, none of which are on this face); then the faceplate rows top to bottom,
+# matching 50G.kml y-offsets 347/385/422/459/500/541/582.
 #
 # Two deliberate deviations from the real 50g, both forced by having no soft
 # menus: the X key (no symbolic variables here) carries the stack commands the
 # 50g keeps in its STACK menu, and left-shift DEL clears the command line rather
 # than editing text. Everything else is the genuine layout.
 KEY_ROWS: tuple[tuple[Key, ...], ...] = (
+    (
+        _k("stk", "STK", "up", "", None, "", None, style="nav"),
+        _k("up", "", "up", "", None, "", None, style="nav"),
+        _k("down", "", "down", "", None, "", None, style="nav"),
+        _k("left", "", "left", "", None, "", None, style="nav"),
+        _k("right", "", "right", "", None, "", None, style="nav"),
+    ),
     (
         _k("hist", "HIST", None, "CMD", None, "UNDO", "undo", alpha="M"),
         _k("eval", "EVAL", None, "PRG", None, "CHARS", None, alpha="N"),

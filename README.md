@@ -35,6 +35,26 @@ command line opens; `ENTER` pushes it. With nothing typed, `ENTER` duplicates le
 1 ENTER 0 ÷               →  "Infinite Result", both operands still on the stack
 ```
 
+### The interactive stack
+
+Press `▲` (or `STK`) to open the 50g's stack browser. A cursor walks the levels and the
+soft menu acts on the one it sits on — the fastest way to reorganise a deep stack.
+
+| | |
+|---|---|
+| `▲` / `▼` | Move the cursor; `▼` off level 1 closes the browser |
+| `◀` / `▶` | Jump to level 1 / the deepest level |
+| `ECHO` | Copy the selected value into the command line |
+| `EDIT` | Lift the level off the stack and into the command line |
+| `PICK` | Copy the selected level to level 1 |
+| `ROLL` | Move the selected level to level 1 |
+| `ROLLD` | Send level 1 down to the selected level |
+| `←` | Drop the selected level |
+| `Enter` | Close the browser |
+
+The soft-menu labels are buttons; `F1`–`F6` press them from the keyboard. While the
+browser is open it owns the keyboard, so a stray digit cannot disturb the stack.
+
 ### Shift planes
 
 The left shift is white, the right shift is orange, same as the faceplate. A shift arms for
@@ -53,6 +73,8 @@ brightens on the face so you can read the next key rather than remember it.
 | `s` / `e` | Change sign / exponent (EEX) |
 | `x` / `r` / `d` | SWAP / ROT / DROP |
 | `Esc` / `Del` | Clear the stack / cancel the entry |
+| `↑` `↓` `←` `→` | Interactive stack: open and navigate |
+| `F1`–`F6` | Interactive stack soft menu |
 | `Alt+s` `Alt+q` `Alt+l` `Alt+e` `Alt+g` `Alt+i` `Alt+p` `Alt+a` | √, x², LN, e^x, LOG, 1/x, π, ABS |
 | `Ctrl+Z` | Undo |
 | `Ctrl+M` | Toggle RPN / ALG |

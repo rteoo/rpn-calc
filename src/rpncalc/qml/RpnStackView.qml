@@ -9,6 +9,7 @@ Item {
     property var lines: []          // formatted levels, level 1 first
     property string commandLine: ""
     property bool entering: false
+    property int cursorLevel: 0     // 0 = the interactive stack is closed
     property color inkColor: "#eeeeee"
     property color mutedColor: "#888888"
     property int fontPixelSize: 18
@@ -19,10 +20,21 @@ Item {
     readonly property int levelRows: Math.max(
         1, Math.floor(height / rowHeight) - (entering ? 1 : 0))
 
+    // Walking the cursor deeper than the window is tall has to scroll, or the
+    // selected level would sit off-screen with nothing to show for the keypress.
+    readonly property int firstLevel:
+        Math.max(1, cursorLevel - levelRows + 1)
+
     readonly property var visibleLevels: {
         var out = [];
-        for (var i = levelRows - 1; i >= 0; --i)
-            out.push({ level: i + 1, text: i < lines.length ? lines[i] : "" });
+        for (var i = levelRows - 1; i >= 0; --i) {
+            var level = firstLevel + i;
+            out.push({
+                level: level,
+                text: level - 1 < lines.length ? lines[level - 1] : "",
+                selected: level === cursorLevel
+            });
+        }
         return out;
     }
 
@@ -39,18 +51,58 @@ Item {
                 width: root.width
                 height: root.rowHeight - root.rowSpacing
 
+                // The selected row is banded rather than merely marked: on a
+                // deep stack the pointer alone is easy to lose track of.
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.leftMargin: -root.fontPixelSize * 0.3
+                    anchors.rightMargin: -root.fontPixelSize * 0.3
+                    radius: root.fontPixelSize * 0.2
+                    visible: modelData.selected
+                    color: root.inkColor
+                    opacity: 0.12
+                }
+
                 Text {
                     id: levelLabel
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     text: modelData.level + ":"
-                    color: root.mutedColor
+                    color: modelData.selected ? root.inkColor : root.mutedColor
                     font.family: "iA Writer Mono S"
                     font.pixelSize: root.fontPixelSize
                 }
 
-                Text {
+                // The 50g's cursor: a filled triangle where the colon would be.
+                Canvas {
+                    id: cursor
                     anchors.left: levelLabel.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.round(root.fontPixelSize * 0.5)
+                    height: Math.round(root.fontPixelSize * 0.62)
+                    visible: modelData.selected
+
+                    onPaint: {
+                        var context = getContext("2d");
+                        context.clearRect(0, 0, width, height);
+                        context.fillStyle = String(root.inkColor);
+                        context.beginPath();
+                        context.moveTo(0, 0);
+                        context.lineTo(width, height / 2);
+                        context.lineTo(0, height);
+                        context.closePath();
+                        context.fill();
+                    }
+
+                    Connections {
+                        target: root
+                        function onInkColorChanged() { cursor.requestPaint(); }
+                        function onFontPixelSizeChanged() { cursor.requestPaint(); }
+                    }
+                }
+
+                Text {
+                    anchors.left: cursor.right
                     anchors.leftMargin: root.fontPixelSize / 2
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
