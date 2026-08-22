@@ -34,6 +34,7 @@ _RPN_MODE_SETTING = "mode/rpn"
 _ANGLE_MODE_SETTING = "mode/angle"
 _FORMAT_MODE_SETTING = "mode/format"
 _FORMAT_DIGITS_SETTING = "mode/formatDigits"
+_DEFAULT_ANGLE_MODE = "RAD"
 
 # RPN command ids that mean something to the algebraic engine too. The 50g uses
 # one keyboard for both modes, so the keypad never changes shape - keys that
@@ -331,19 +332,21 @@ class Backend(QObject):
     def _load_modes(self) -> None:
         settings = QSettings()
         self._rpn_mode = settings.value(_RPN_MODE_SETTING, True, type=bool)
-        angle = settings.value(_ANGLE_MODE_SETTING, "RAD", type=str)
+        angle = settings.value(_ANGLE_MODE_SETTING, _DEFAULT_ANGLE_MODE, type=str)
         mode = settings.value(_FORMAT_MODE_SETTING, STD, type=str)
         digits = settings.value(_FORMAT_DIGITS_SETTING, 3, type=int)
-        # Settings are user-editable text; a bad value must not stop the app
-        # from starting, so fall back to the defaults instead of raising.
+        # Settings are user-editable text, so a bad value must not stop the app
+        # from starting. Fall back to this module's declared default rather than
+        # to whatever the engine happened to be constructed with - otherwise a
+        # corrupt setting and a missing one produce different modes.
         try:
             self._rpn.set_angle_mode(angle)
         except ValueError:
-            pass
+            self._rpn.set_angle_mode(_DEFAULT_ANGLE_MODE)
         try:
             self._rpn.set_number_format(NumberFormat(mode, digits))
         except ValueError:
-            pass
+            self._rpn.set_number_format(NumberFormat())
 
     def _save_modes(self) -> None:
         settings = QSettings()
