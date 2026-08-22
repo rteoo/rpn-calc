@@ -127,3 +127,24 @@ class TestShiftState:
 
     def test_unknown_key_is_ignored(self):
         assert resolve("nonexistent", ShiftState()) is None
+
+
+class TestKeymapEngineContract:
+    """Every legend on the face must reach a command the engine implements.
+
+    This is the seam where the keyboard and the engine were built separately;
+    without it, a key can look live and do nothing.
+    """
+
+    def test_every_bound_action_is_a_real_command(self):
+        from rpncalc.rpn_engine import RpnEngine
+
+        engine = RpnEngine()
+        bound = {
+            action
+            for key in KEYS_BY_ID.values()
+            for action in (key.action, key.left_action, key.right_action)
+            if action and action not in ("shift_left", "shift_right")
+        }
+        unknown = sorted(a for a in bound if not engine.knows(a))
+        assert unknown == [], f"keys bound to commands the engine lacks: {unknown}"
