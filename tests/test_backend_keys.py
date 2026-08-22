@@ -182,3 +182,34 @@ class TestDisplayFormatting:
         backend.setAngleMode("DEG")
         press_ids(backend, "9 0 enter sin")
         assert backend.stackLines == ["1"]
+
+
+class TestSystemTheme:
+    """`SystemTheme` is constructed only by `__main__`, so nothing else here
+    would catch it crashing on a real desktop - which it did, coercing Qt's
+    ColorScheme enum with int()."""
+
+    def test_reports_usable_values(self, qt_app):
+        from rpncalc.systemtheme import SystemTheme
+
+        theme = SystemTheme()
+        assert isinstance(theme.darkMode(), bool)
+        assert isinstance(theme.textScale(), float)
+        assert theme.textScale() > 0
+
+    def test_refresh_is_idempotent(self, qt_app):
+        from rpncalc.systemtheme import SystemTheme
+
+        theme = SystemTheme()
+        before = (theme.darkMode(), theme.textScale())
+        theme.refresh()
+        assert (theme.darkMode(), theme.textScale()) == before
+
+    def test_drives_the_backend_dark_mode(self, qt_app):
+        from rpncalc.systemtheme import SystemTheme
+
+        theme = SystemTheme()
+        backend = Backend()
+        backend.darkMode = theme.darkMode()
+        assert backend.darkMode == theme.darkMode()
+        assert backend.themeBackground.startswith("#")

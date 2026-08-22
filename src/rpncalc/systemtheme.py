@@ -7,7 +7,7 @@ Windows-native path, while keeping the same `SystemTheme` signal contract so
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QGuiApplication
 
 try:
@@ -66,11 +66,12 @@ class SystemTheme(QObject):
         # Qt 6.5+ reports the platform's color scheme directly; prefer it.
         style_hints = QGuiApplication.styleHints()
         if style_hints is not None:
+            # colorScheme() returns a Qt.ColorScheme enum member, not an int -
+            # compare against the enum rather than coercing it.
             scheme = style_hints.colorScheme()
-            # Qt.ColorScheme: Unknown = 0, Light = 1, Dark = 2.
-            if int(scheme) == 2:
+            if scheme == Qt.ColorScheme.Dark:
                 return True
-            if int(scheme) == 1:
+            if scheme == Qt.ColorScheme.Light:
                 return False
 
         # Fall back to the registry key Windows Explorer itself reads.
