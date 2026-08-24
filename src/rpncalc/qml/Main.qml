@@ -82,6 +82,36 @@ ApplicationWindow {
         onActivated: win.close()
     }
 
+    Shortcut {
+        sequence: "Ctrl+,"
+        context: Qt.ApplicationShortcut
+        onActivated: settingsMenu.popup()
+    }
+
+    // The 50g faceplate has no settings key and this window has no room to
+    // invent one, so the handful of host-side options live in a context menu
+    // on the display. Right-click it, or Ctrl+comma.
+    Menu {
+        id: settingsMenu
+
+        MenuItem {
+            text: qsTr("Launch on the calculator key")
+            // Dimmed rather than hidden where there is no registry to write,
+            // the same way the keys this calculator cannot honour are dimmed.
+            enabled: backend.calculatorKeySupported
+            checkable: true
+            checked: backend.calculatorKeyBound
+            // Clicking a MenuItem assigns `checked` itself, which destroys the
+            // binding above; restoring it keeps the item reporting what the
+            // registry actually holds rather than what was last clicked - so a
+            // refused write shows up as the tick springing back.
+            onTriggered: {
+                backend.setCalculatorKeyBound(checked);
+                checked = Qt.binding(function() { return backend.calculatorKeyBound; });
+            }
+        }
+    }
+
     Item {
         id: face
         anchors.fill: parent
@@ -169,6 +199,15 @@ ApplicationWindow {
             anchors.leftMargin: win.scaledSize(8)
             anchors.rightMargin: win.scaledSize(8)
             anchors.bottomMargin: win.scaledSize(14)
+
+            // Declared first so it sits under everything: it takes only the
+            // right button, which nothing above it accepts, and leaves the
+            // soft menu's own left-click handling untouched.
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.RightButton
+                onClicked: settingsMenu.popup()
+            }
 
             StatusBar {
                 id: statusBar
@@ -332,19 +371,37 @@ ApplicationWindow {
             wasMaximized = false;
     }
 
+    // The design size grown by the desktop text scale can be taller than the
+    // screen it opens on - at 150% scaling 820 becomes 1230, which does not fit
+    // a 1080-pixel display. A window born bigger than its screen comes up
+    // filling it, which is what made this look like it opened maximized.
+    //
+    // The fitting is done by the backend, not here: QML's Screen attached
+    // property only offers desktopAvailableWidth/Height, which span the whole
+    // virtual desktop. Across monitors at different offsets that is larger than
+    // any single screen, so nothing ever measured as too big.
     Component.onCompleted: {
         var geometry = backend.windowGeometry();
+        var wantedX = x;
+        var wantedY = y;
+        var wantedWidth = Math.round(420 * backend.textScale);
+        var wantedHeight = Math.round(820 * backend.textScale);
+
         if (geometry.valid) {
+            wantedX = geometry.x;
+            wantedY = geometry.y;
+            wantedWidth = geometry.width;
+            wantedHeight = geometry.height;
             x = geometry.x;
             y = geometry.y;
-            width = geometry.width;
-            height = geometry.height;
-            if (geometry.maximized) showMaximized();
-        } else {
-            // First run: open at the design size, grown by the desktop text scale.
-            width = Math.round(420 * backend.textScale);
-            height = Math.round(820 * backend.textScale);
         }
+
+        var size = backend.fitToScreen(wantedX, wantedY, wantedWidth, wantedHeight);
+        width = Math.max(minimumWidth, size.width);
+        height = Math.max(minimumHeight, size.height);
+
+        if (geometry.valid && geometry.maximized)
+            showMaximized();
     }
 
     Component.onDestruction: backend.saveWindowGeometry(

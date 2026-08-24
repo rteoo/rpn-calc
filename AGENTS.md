@@ -36,7 +36,11 @@ to a temp directory.
 | `keymap.py` | The faceplate as data, plus the shift state machine. |
 | `backend.py` | The **only** Qt-aware engine file; the QML context property `backend`. |
 | `systemtheme.py` | Windows dark mode / text scale; Omarchy `colors.toml` reader kept. |
-| `qml/` | `Main.qml`, `CalcButton.qml`, `RpnStackView.qml`, `StatusBar.qml`. |
+| `launchkey.py` | The keyboard's calculator key, bound through the Windows registry. |
+| `qml/` | `Main.qml`, `CalcButton.qml`, `RpnStackView.qml`, `SoftMenu.qml`, `StatusBar.qml`. |
+
+`launchkey.py` is stdlib-only for the same reason `systemtheme.py` is separate: the
+host integration is not the calculator, and it has to import cleanly on Linux.
 
 Keep the engine layer free of Qt imports. That split is upstream's too — omacalc's
 `tests.pro` compiles `backend.cpp` without `systemtheme.cpp` for the same reason.
@@ -107,6 +111,31 @@ Deliberate deviations, all forced by the reduced feature set:
 Anything drawn rather than typeset (shift arrows, direction arrows, the backspace
 icon, the stack cursor) is drawn because iA Writer Mono has no glyph for it. Check
 before adding a symbol to a cap — the font is missing more than you would expect.
+
+## The keyboard's calculator key
+
+A keyboard's dedicated calculator key cannot be grabbed as a hotkey. Windows hands
+it to Explorer as `VK_LAUNCH_APP2`, which Explorer resolves through
+`HKCU\...\Explorer\AppKey\18`; a `ShellExecute` value there beats the built-in
+mapping to the Calculator app, and deleting the value hands the key straight back.
+HKLM carries the same subkey with **empty** values, so the per-user override has
+nothing to outrank.
+
+- **`ShellExecute` honours arguments.** A source checkout can therefore register
+  `"...\pythonw.exe" -m rpncalc` with no launcher script - and `pythonw`, not
+  `python`, or the key flashes a console every press.
+- The binding names the build that wrote it, so a checkout and an installed exe
+  each recognise only their own. Toggling it on from either re-points the key.
+- **Verifying means synthesizing the key**, not reasoning about it:
+  `ctypes.windll.user32.keybd_event(0xB7, 0, 0, 0)` makes Explorer do the real
+  resolution. Nothing short of that proves which calculator opens.
+- `tests/test_launchkey.py` drives the real registry, redirected at a scratch
+  subkey. The live `AppKey\18` is the user's actual desktop setting - a test run
+  that writes it has broken something outside the repo.
+- Releasing the key leaves a value pointing at *another* application alone.
+- The toggle lives in a context menu on the display (right-click, or `Ctrl+,`).
+  The faceplate is a fixed 50g replica with no room for a settings key, and
+  inventing one would be a deviation the Faceplate section would have to defend.
 
 ## Known gaps
 

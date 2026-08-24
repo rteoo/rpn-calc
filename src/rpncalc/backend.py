@@ -10,10 +10,12 @@ reason).
 from __future__ import annotations
 
 import math
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import (
     Property,
+    QPoint,
     QFileSystemWatcher,
     QObject,
     QRect,
@@ -23,13 +25,16 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor, QGuiApplication
 
-from . import alg_engine
+from . import alg_engine, launchkey
 from .keymap import KEY_ROWS, Shift, ShiftState, resolve
 from .numeric import ENG, FIX, SCI, STD, NumberFormat, parse_number
 from .rpn_engine import DEFAULT_ANGLE_MODE, RpnEngine
 
 _WINDOW_GEOMETRY_SETTING = "window/geometry"
 _WINDOW_MAXIMIZED_SETTING = "window/maximized"
+
+# Breathing room between the window and the edge of the screen's work area.
+_SCREEN_MARGIN = 60
 _RPN_MODE_SETTING = "mode/rpn"
 _ANGLE_MODE_SETTING = "mode/angle"
 _FORMAT_MODE_SETTING = "mode/format"
@@ -77,6 +82,7 @@ class Backend(QObject):
     darkModeChanged = Signal()
     textScaleChanged = Signal()
     themeColorsChanged = Signal()
+    calculatorKeyChanged = Signal()
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -193,7 +199,11 @@ class Backend(QObject):
         geometry = settings.value(_WINDOW_GEOMETRY_SETTING, QRect())
         if not isinstance(geometry, QRect):
             geometry = QRect()
-        maximized = settings.value(_WINDOW_MAXIMIZED_SETTING, False)
+        # `type=bool` is load-bearing. QSettings stores a boolean as the text
+        # "true" or "false", and bool("false") is True - so without this the
+        # window restored maximized for ever after being maximized once, with
+        # no way back.
+        maximized = settings.value(_WINDOW_MAXIMIZED_SETTING, False, type=bool)
         return {
             # Positions can legitimately be negative on monitors left of or
             # above the primary, so validity travels separately instead of
@@ -203,7 +213,39 @@ class Backend(QObject):
             "y": geometry.y(),
             "width": geometry.width(),
             "height": geometry.height(),
-            "maximized": bool(maximized),
+            "maximized": maximized,
+        }
+
+    @Slot(int, int, int, int, result="QVariantMap")
+    def fitToScreen(self, x: int, y: int, width: int, height: int) -> dict:
+        """Shrink a window to the work area of the screen it opens on.
+
+        The design size grown by a large desktop text scale can be taller than
+        the display - 820 at 150% is 1230, which does not fit a 1080-pixel
+        screen - and a window born bigger than its screen comes up filling it,
+        which reads as "it opened maximized".
+
+        This lives here rather than in QML because QML's Screen attached
+        property offers `desktopAvailableHeight`, which spans the whole virtual
+        desktop. Across monitors at different offsets that is far taller than
+        any one of them, so nothing ever looked too big. Only
+        `QScreen.availableGeometry` knows one screen's work area.
+        """
+        screen = QGuiApplication.screenAt(QPoint(x, y)) or QGuiApplication.primaryScreen()
+        if screen is None or width <= 0 or height <= 0:  # pragma: no cover
+            return {"width": width, "height": height}
+
+        room = screen.availableGeometry()
+        # A little back from the edges, so the frame and the taskbar have room.
+        usable_width = max(1, room.width() - _SCREEN_MARGIN)
+        usable_height = max(1, room.height() - _SCREEN_MARGIN)
+
+        # Both sides shrink by the same factor: scaling only the height would
+        # letterbox the keypad.
+        shrink = min(1.0, usable_width / width, usable_height / height)
+        return {
+            "width": max(1, round(width * shrink)),
+            "height": max(1, round(height * shrink)),
         }
 
     @Slot(int, int, int, int, bool)
@@ -366,6 +408,36 @@ class Backend(QObject):
         self._save_modes()
         self.modeChanged.emit()
         self.stackChanged.emit()
+
+    # -- the keyboard's dedicated calculator key ------------------------------
+
+    def _get_calculator_key_supported(self) -> bool:
+        return launchkey.supported()
+
+    def _get_calculator_key_bound(self) -> bool:
+        return launchkey.is_bound()
+
+    # Read straight from the registry rather than cached: the binding is shared
+    # desktop state that another install - or the user with regedit - can change
+    # while this window is open.
+    calculatorKeySupported = Property(bool, _get_calculator_key_supported, constant=True)
+    calculatorKeyBound = Property(
+        bool, _get_calculator_key_bound, notify=calculatorKeyChanged)
+
+    @Slot(bool)
+    def setCalculatorKeyBound(self, bound: bool) -> None:
+        """Bind or release the calculator key, reporting a refusal rather than
+        dying of it - a settings toggle must not be able to close the app."""
+        try:
+            if bound:
+                launchkey.bind()
+            else:
+                launchkey.unbind()
+        except OSError as error:
+            print(f"could not rebind the calculator key: {error}", file=sys.stderr)
+        # Emitted either way: on failure the property re-reads as whatever the
+        # registry still holds, so the toggle snaps back instead of lying.
+        self.calculatorKeyChanged.emit()
 
     def _load_modes(self) -> None:
         settings = QSettings()
