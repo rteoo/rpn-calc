@@ -1,6 +1,6 @@
 # rpn-calc
 
-An HP 50g-style RPN calculator wearing [omacalc](https://github.com/omacom-io/omacalc)'s face.
+An HP 50g-style RPN calculator wearing [omacalc](https://github.com/omacom-io/omacalc)'s face, implemented in Python.
 
 RPN is the default input method: a real command line, `ENTER`, and an unbounded stack with
 full stack control. Algebraic mode is kept behind a toggle, exactly as the real 50g keeps it
