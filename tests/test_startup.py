@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 from PySide6.QtCore import QSettings
-from PySide6.QtGui import QFontDatabase, QGuiApplication
+from PySide6.QtGui import QFontDatabase, QGuiApplication, QIcon
 
 from rpncalc import __main__ as entry
 from rpncalc.__main__ import Startup, main, start
@@ -58,6 +58,24 @@ class TestStart:
 
     def test_the_bundled_font_is_registered(self, started):
         assert "iA Writer Mono S" in QFontDatabase.families()
+
+    def test_the_application_wears_its_own_icon(self, started):
+        # Without this the window and taskbar fall back to the interpreter's
+        # icon, which is what a Python program wearing an .exe costume looks
+        # like from the dock.
+        icon = started.app.windowIcon()
+        assert not icon.isNull()
+
+    def test_the_icon_carries_every_size_windows_asks_for(self, started):
+        sizes = {size.width() for size in started.app.windowIcon().availableSizes()}
+        # 16/32/48 are the frames Explorer and a favicon reach for; 256 is the
+        # one the large-icon view uses.  A single-frame icon gets scaled to mud.
+        assert {16, 32, 48, 256} <= sizes
+
+    def test_the_icon_ships_with_the_package(self):
+        icon_path = entry._PACKAGE_DIR / "icons" / "rpncalc.ico"
+        assert icon_path.is_file()
+        assert not QIcon(str(icon_path)).isNull()
 
     def test_the_backend_calculates_through_the_built_app(self, started):
         for key in ("5", "enter", "3", "enter", "2", "+", "*"):
@@ -115,6 +133,14 @@ class TestMain:
         monkeypatch.setattr(entry, "start", lambda: started)
         monkeypatch.setattr(type(started.app), "exec", lambda self: 7)
         assert main() == 7
+
+
+class TestTaskbarIdentity:
+    def test_it_is_a_no_op_off_windows(self, monkeypatch):
+        # ctypes.windll does not exist anywhere else, so an unguarded call
+        # would take the app down on launch rather than merely look wrong.
+        monkeypatch.setattr(entry.sys, "platform", "linux")
+        entry._claim_taskbar_identity()
 
 
 class TestResourceDir:

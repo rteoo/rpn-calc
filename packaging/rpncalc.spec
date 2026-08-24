@@ -36,9 +36,14 @@ EXCLUDED_PYTHON = [
     "email", "html", "http", "xmlrpc", "pytest", "PIL", "numpy",
 ]
 
+ICON = PACKAGE / "icons" / "rpncalc.ico"
+
+# The icon ships inside the package, not beside the spec: the app sets it as its
+# own window icon at startup, so it has to be there when running from source too.
 datas = [
     (str(PACKAGE / "qml"), "rpncalc/qml"),
     (str(PACKAGE / "fonts"), "rpncalc/fonts"),
+    (str(PACKAGE / "icons"), "rpncalc/icons"),
 ]
 
 # A windowed build has nowhere to print a traceback, which makes a failure to
@@ -127,7 +132,7 @@ exe = EXE(
     # is the clearest sign of a Python program wearing an .exe costume.
     console=DEBUG_BUILD,
     disable_windowed_traceback=False,
-    icon=str(ROOT / "packaging" / "rpncalc.ico"),
+    icon=str(ICON),
     version=str(ROOT / "packaging" / "version_info.txt"),
 )
 

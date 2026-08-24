@@ -22,7 +22,7 @@ rpncalc = "rpncalc.__main__:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-rpncalc = ["qml/*.qml", "fonts/*.ttf", "fonts/OFL.txt"]
+rpncalc = ["qml/*.qml", "fonts/*.ttf", "fonts/OFL.txt", "icons/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
