@@ -120,8 +120,17 @@ numbers, no matrices, no equation writer. `EVAL`, `'`, `SYMB`, and
 
 Runs the suite under branch coverage and **fails if `numeric.py`, `stack.py`,
 `rpn_engine.py`, `alg_engine.py` or `keymap.py` drops below 100% of statements
-and branches.** The Qt layer is tested but not gated - it is property plumbing,
-and what matters there is covered by `tests/test_backend_keys.py`.
+and branches.** The Qt layer is reported but not gated.
+
+**A branch covered only because a property test happened to generate the right
+sequence is not covered.** Hypothesis explores differently each run, so any
+branch it reaches by chance needs a deterministic test pinning it too -
+otherwise the gate passes or fails on a random seed. This has already happened
+once, to the second-EEX branch in `rpn_engine`.
+
+`rpncalc.__main__.start` does everything `main` does except enter the event
+loop, so the startup path is testable. That split exists because `main` blocks,
+and startup is where the one crash that reached a real desktop lived.
 
 Coverage is the floor, not the evidence. Three things carry the actual weight:
 
