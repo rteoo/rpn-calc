@@ -81,7 +81,7 @@ def main() -> int:
         print('PyInstaller is missing. Run: pip install -e ".[build]"', file=sys.stderr)
         return 1
 
-    if not (PACKAGING / "rpncalc.ico").exists():
+    if not (ROOT / "src" / "rpncalc" / "icons" / "rpncalc.ico").exists():
         print("Icon missing. Run: python tools/make_icon.py", file=sys.stderr)
         return 1
 

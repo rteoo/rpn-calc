@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QUrl
-from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
+from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 
@@ -28,6 +28,21 @@ def _resource_dir() -> Path:
 
 
 _PACKAGE_DIR = _resource_dir()
+
+
+def _claim_taskbar_identity() -> None:
+    """Stop Windows from lending this process python.exe's icon.
+
+    The taskbar groups buttons by AppUserModelID, and a process launched by the
+    interpreter inherits the interpreter's - so `python -m rpncalc` shows the
+    Python logo in the taskbar however the window icon is set. Claiming an ID of
+    our own detaches the button and lets `setWindowIcon` reach it.
+    """
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("rpn-calc.rpncalc")
 
 
 @dataclass
@@ -59,6 +74,11 @@ def start(argv: list[str] | None = None) -> Startup:
     app.setApplicationName("rpncalc")
     app.setOrganizationName("rpncalc")
     app.setOrganizationDomain("rpn-calc")
+
+    # One multi-resolution .ico serves the window, the taskbar and the frozen
+    # executable's resource; Qt reads every frame out of it.
+    _claim_taskbar_identity()
+    app.setWindowIcon(QIcon(str(_PACKAGE_DIR / "icons" / "rpncalc.ico")))
 
     QFontDatabase.addApplicationFont(str(_PACKAGE_DIR / "fonts" / "iAWriterMonoS-Regular.ttf"))
     QFontDatabase.addApplicationFont(str(_PACKAGE_DIR / "fonts" / "iAWriterMonoS-Bold.ttf"))
