@@ -59,12 +59,16 @@ class TestOpeningAndClosing:
         e.press("up")
         assert e.cursor_level is None
 
-    def test_left_and_right_jump_to_the_ends(self, engine):
+    def test_the_horizontal_arrows_do_nothing_while_browsing(self, engine):
+        # Outside the browser they are stack commands; inside it the cursor
+        # moves vertically and the soft menu does the work, so they must not
+        # quietly rearrange the stack being browsed.
         engine.press("up")
-        engine.press("right")
-        assert engine.cursor_level == 4
-        engine.press("left")
+        before = engine.stack_lines()
+        for key in ("left", "right", "left", "right"):
+            engine.press(key)
         assert engine.cursor_level == 1
+        assert engine.stack_lines() == before
 
 
 class TestMenu:
@@ -214,3 +218,77 @@ class TestIsolation:
         assert engine.stack_lines() != before
         engine.press("undo")
         assert engine.stack_lines() == before
+
+
+class TestArrowsOutsideTheBrowser:
+    """With the browser closed the horizontal arrows are stack commands.
+
+    Read frame by frame off a recording of a real 50g: the right arrow was
+    pressed three times and each press exchanged levels 1 and 2, toggling the
+    stack back and forth. This is not the browser - the soft menu still read
+    EDIT VIEW RCL STO PURGE CLEAR throughout.
+    """
+
+    def test_right_swaps_levels_one_and_two(self, engine):
+        assert engine.stack_lines() == ["30", "20", "10", "10"]
+        engine.press("right")
+        assert engine.stack_lines() == ["20", "30", "10", "10"]
+
+    def test_right_twice_returns_the_stack(self, engine):
+        before = engine.stack_lines()
+        engine.press("right")
+        engine.press("right")
+        assert engine.stack_lines() == before
+
+    def test_left_rotates_the_top_three(self, engine):
+        engine.press("left")
+        assert engine.stack_lines() == ["10", "30", "20", "10"]
+
+    def test_left_three_times_returns_the_stack(self, engine):
+        before = engine.stack_lines()
+        for _ in range(3):
+            engine.press("left")
+        assert engine.stack_lines() == before
+
+    def test_neither_arrow_opens_the_browser(self, engine):
+        engine.press("right")
+        engine.press("left")
+        assert engine.cursor_level is None
+        assert engine.menu_labels() == []
+
+    def test_an_open_command_line_is_entered_first(self, engine):
+        press(engine, "9 9")
+        assert engine.command_line == "99"
+        engine.press("right")
+        # 99 is committed, then swapped with what was level 1.
+        assert engine.command_line is None
+        assert engine.stack_lines() == ["30", "99", "20", "10", "10"]
+
+    def test_undo_takes_back_an_arrow(self, engine):
+        before = engine.stack_lines()
+        engine.press("right")
+        engine.press("undo")
+        assert engine.stack_lines() == before
+
+    @pytest.mark.parametrize("key, needed", [("right", 2), ("left", 3)])
+    def test_an_arrow_reports_underflow_rather_than_acting(self, key, needed):
+        for depth in range(needed):
+            e = RpnEngine()
+            for value in range(depth):
+                e.stack.push(float(value))
+            before = e.stack.to_list()
+            e.press(key)
+            assert e.error == "Too Few Arguments"
+            assert e.stack.to_list() == before
+
+    def test_down_does_nothing_with_the_browser_closed(self, engine):
+        before = engine.stack_lines()
+        engine.press("down")
+        assert engine.cursor_level is None
+        assert engine.stack_lines() == before
+
+    def test_up_on_an_empty_stack_does_nothing(self):
+        e = RpnEngine()
+        e.press("up")
+        assert e.cursor_level is None
+        assert e.depth == 0

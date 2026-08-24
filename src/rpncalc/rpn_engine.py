@@ -39,6 +39,8 @@ _INTERACTIVE_COMMANDS = {
 _MENU_COMMANDS = ("ist_echo", "ist_view", "ist_edit", "ist_pick", "ist_roll",
                   "ist_rolld")
 
+_ARROWS = frozenset({"up", "down", "left", "right"})
+
 
 class CalcError(Exception):
     """A math error that is not stack underflow: infinite/undefined results
@@ -134,7 +136,7 @@ class RpnEngine:
             or key in self._BINARY_METHODS
             or key in self._STACK_COMMANDS
             or key in _INTERACTIVE_COMMANDS
-            or key in ("up", "down", "left", "right")
+            or key in _ARROWS
         )
 
     def press(self, key_id: str) -> None:
@@ -150,9 +152,15 @@ class RpnEngine:
     def _dispatch(self, key: str) -> None:
         if not self.knows(key):
             return  # an unbound key is a no-op, never a crash
-        if key in ("up", "down", "left", "right"):
-            self._handle_arrow(key)
-        elif self.cursor_level is not None:
+        if key in _ARROWS:
+            resolved = self._resolve_arrow(key)
+            if resolved is None:
+                return
+            # The arrow resolved to an ordinary stack command; let it take the
+            # usual route so it commits an open command line first, like every
+            # other command does.
+            key = resolved
+        if self.cursor_level is not None:
             self._dispatch_interactive(key)
         elif key in _INTERACTIVE_COMMANDS:
             return  # menu keys mean nothing while the browser is closed
@@ -206,26 +214,35 @@ class RpnEngine:
         if self.knows_menu(index):
             self.press(_MENU_COMMANDS[index])
 
-    def _handle_arrow(self, key: str) -> None:
-        if self.cursor_level is None:
+    def _resolve_arrow(self, key: str) -> str | None:
+        """What an arrow means right now.
+
+        Returns a stack command to run, or None when the arrow has already done
+        its job (moving the browser cursor) or means nothing here.
+
+        Outside the browser the horizontal arrows are stack commands - the right
+        arrow swaps levels 1 and 2 on a real 50g, confirmed frame by frame
+        against a recording of one. Inside the browser they are not used: the
+        cursor moves vertically and the soft menu does the work.
+        """
+        if self.cursor_level is not None:
+            if key == "up":
+                self.cursor_level = min(self.cursor_level + 1, self.stack.depth)
+            elif key == "down":
+                # Stepping below level 1 leaves the browser, which is the
+                # quickest way out and mirrors how the cursor got in.
+                self.cursor_level = None if self.cursor_level == 1 else self.cursor_level - 1
+            return None
+
+        if key == "up":
             # Up opens the browser on level 1, as pressing it on the 50g does.
             # An empty stack has nothing to browse.
-            if key == "up" and self.stack.depth >= 1:
+            if self.stack.depth >= 1:
                 self.cursor_level = 1
-            return
-        if key == "up":
-            self.cursor_level = min(self.cursor_level + 1, self.stack.depth)
-        elif key == "down":
-            # Stepping below level 1 leaves the browser, which is the quickest
-            # way out and matches how the cursor got in.
-            if self.cursor_level == 1:
-                self.cursor_level = None
-            else:
-                self.cursor_level -= 1
-        elif key == "left":
-            self.cursor_level = 1
-        else:  # right - ours, not the 50g's: jump to the deepest level.
-            self.cursor_level = self.stack.depth
+            return None
+        if key == "down":
+            return None
+        return "rot" if key == "left" else "swap"
 
     def _dispatch_interactive(self, key: str) -> None:
         """While the browser is open it owns the keyboard.

@@ -67,6 +67,10 @@ the soft menu acts on whichever one it sits on. Behaviour was read off a recordi
 of the real calculator, not recalled:
 
 - `▲` opens it on level 1; `▲`/`▼` move the cursor, `▼` off level 1 closes it.
+- `◀`/`▶` do **nothing** while browsing. With the browser closed they are stack
+  commands instead: `▶` swaps levels 1 and 2, `◀` rotates the top three. The
+  swap was read frame by frame off a recording of a real 50g - three presses,
+  each toggling levels 1 and 2, with the ordinary HOME menu still showing.
 - **PICK** copies the selected level to level 1 and leaves the cursor on the same
   level *number* — the objects shift up underneath it rather than the pointer
   chasing the one it acted on. This is the detail worth not regressing.
@@ -96,8 +100,6 @@ Deliberate deviations, all forced by the reduced feature set:
 - left-shift `DEL` clears the command line rather than editing text;
 - the navigation row (`STK ▲ ▼ ◀ ▶`) is flattened into one row; the 50g keeps these
   as a cluster beside APPS/MODE/TOOL, none of which are on this face. `STK` is ours;
-- `◀`/`▶` jump the cursor to level 1 and to the deepest level. The 50g reserves them
-  for editing wide objects, which this calculator does not have;
 - the soft-menu labels are themselves the buttons, drawn at the bottom of the display.
   The 50g labels them on-screen with six unlabelled keys beneath; there is no room for
   another key row here. `F1`–`F6` press them from the keyboard.
@@ -177,6 +179,16 @@ Two rules for this area:
   window, so enumerating the parent's windows finds nothing and looks like a hang.
 - `--debug` builds a console variant. A windowed build has nowhere to print a
   traceback, so a startup failure is silent.
+- **The icon lives in the package, at `src/rpncalc/icons/`, not in `packaging/`.**
+  `setWindowIcon` needs it at runtime, so it has to ship with the source too, not
+  only be baked into the `.exe` resource. Qt reads every frame out of the one
+  `.ico`, so there is no PNG set to keep in sync.
+- **Setting the window icon is not enough on Windows.** The taskbar groups
+  buttons by AppUserModelID and a process launched by the interpreter inherits
+  the interpreter's, so `python -m rpncalc` shows the *Python* icon in the
+  taskbar however the window icon is set. `_claim_taskbar_identity` claims an ID
+  of our own; it must stay guarded by `sys.platform`, as `ctypes.windll` does not
+  exist anywhere else.
 - **An offscreen `grabWindow()` renders whether or not the window would really
   show.** It is not evidence the app opens; check a real window for that.
 
