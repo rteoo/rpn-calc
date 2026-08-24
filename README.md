@@ -6,6 +6,12 @@ RPN is the default input method: a real command line, `ENTER`, and an unbounded 
 full stack control. Algebraic mode is kept behind a toggle, exactly as the real 50g keeps it
 under `MODE`. The keyboard is the 50g's lower block, shift planes and all.
 
+## Download
+
+A built Windows executable ships with each
+[release](https://github.com/rteoo/rpn-calc/releases/latest) — one self-contained
+file, no Python installation needed. To run from source instead, install it.
+
 ## Install
 
 ```sh
@@ -118,7 +124,7 @@ pytest                                          # the whole suite, headless
 .venv/Scripts/python.exe tools/verify_core.py   # + a 100% gate on the core
 ```
 
-1473 tests, no display needed. The calculation core — number formatting, the
+1509 tests, no display needed. The calculation core — number formatting, the
 stack, and both engines — is held at **100% statement and branch coverage**, and
 its answers are checked against an independent 50-digit decimal implementation
 rather than against the same `math` functions it calls.
@@ -128,6 +134,10 @@ rather than against the same `math` functions it calls.
 No CAS, soft menus, ALPHA entry, symbolic variables, units, complex numbers, or matrices.
 Keys with no meaning here keep their real legend and render dimmed rather than lying about
 being live. If you need those, the real 50g emulator is still the answer.
+
+## Changelog
+
+Release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Credits
 
