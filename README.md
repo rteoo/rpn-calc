@@ -37,13 +37,16 @@ command line opens; `ENTER` pushes it. With nothing typed, `ENTER` duplicates le
 
 ### The interactive stack
 
+With the browser closed, the horizontal arrows are stack commands: **`▶` swaps
+levels 1 and 2**, and **`◀` rotates the top three** so level 3 comes down to
+level 1. Neither opens the browser.
+
 Press `▲` (or `STK`) to open the 50g's stack browser. A cursor walks the levels and the
 soft menu acts on the one it sits on — the fastest way to reorganise a deep stack.
 
 | | |
 |---|---|
 | `▲` / `▼` | Move the cursor; `▼` off level 1 closes the browser |
-| `◀` / `▶` | Jump to level 1 / the deepest level |
 | `ECHO` | Copy the selected value into the command line |
 | `EDIT` | Lift the level off the stack and into the command line |
 | `PICK` | Copy the selected level to level 1 |
@@ -73,7 +76,8 @@ brightens on the face so you can read the next key rather than remember it.
 | `s` / `e` | Change sign / exponent (EEX) |
 | `x` / `r` / `d` | SWAP / ROT / DROP |
 | `Esc` / `Del` | Clear the stack / cancel the entry |
-| `↑` `↓` `←` `→` | Interactive stack: open and navigate |
+| `↑` | Open the interactive stack |
+| `←` `→` | Rotate the top three / swap levels 1 and 2 |
 | `F1`–`F6` | Interactive stack soft menu |
 | `Alt+s` `Alt+q` `Alt+l` `Alt+e` `Alt+g` `Alt+i` `Alt+p` `Alt+a` | √, x², LN, e^x, LOG, 1/x, π, ABS |
 | `Ctrl+Z` | Undo |
@@ -100,8 +104,12 @@ so it never gets faster. If you launch the calculator often, the folder build is
 worth the extra shape. `--debug` produces a console build that prints why it
 failed to start, which a windowed build cannot.
 
-The icon is committed at `packaging/rpncalc.ico`; regenerate it with
-`python tools/make_icon.py` only if it should change.
+The icon is committed at `src/rpncalc/icons/rpncalc.ico` — inside the package,
+because the app sets it as its own window icon at startup, not only as the
+executable's resource. One multi-resolution `.ico` covers the window, the
+taskbar, Explorer and a favicon; `rpncalc.png` beside it is the 256px form a
+Linux `.desktop` entry wants. Regenerate both with `python tools/make_icon.py`
+only if the icon should change.
 
 ## Test
 
@@ -110,7 +118,7 @@ pytest                                          # the whole suite, headless
 .venv/Scripts/python.exe tools/verify_core.py   # + a 100% gate on the core
 ```
 
-1459 tests, no display needed. The calculation core — number formatting, the
+1473 tests, no display needed. The calculation core — number formatting, the
 stack, and both engines — is held at **100% statement and branch coverage**, and
 its answers are checked against an independent 50-digit decimal implementation
 rather than against the same `math` functions it calls.
