@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QObject, QUrl
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 
 from .backend import Backend
 from .systemtheme import SystemTheme
+
 
 def _resource_dir() -> Path:
     """Where the QML and fonts live.
@@ -28,8 +30,32 @@ def _resource_dir() -> Path:
 _PACKAGE_DIR = _resource_dir()
 
 
-def main() -> int:
-    app = QGuiApplication(sys.argv)
+@dataclass
+class Startup:
+    """Everything `main` builds before handing control to the event loop.
+
+    Kept separate so the startup path can be tested: `main` itself blocks in
+    `app.exec()`, and this is where a broken theme reader or a QML file that
+    stopped loading would show up. It has caught a real crash before - Qt's
+    colorScheme() enum being coerced with int() - which no headless test of the
+    engine could have found.
+    """
+
+    app: QGuiApplication
+    backend: Backend
+    system_theme: SystemTheme
+    engine: QQmlApplicationEngine
+    window: QObject | None
+
+    @property
+    def loaded(self) -> bool:
+        return self.window is not None
+
+
+def start(argv: list[str] | None = None) -> Startup:
+    # Reuse an existing application when there is one: Qt allows only one per
+    # process, and a test suite has already made it.
+    app = QGuiApplication.instance() or QGuiApplication(argv if argv is not None else sys.argv)
     app.setApplicationName("rpncalc")
     app.setOrganizationName("rpncalc")
     app.setOrganizationDomain("rpn-calc")
@@ -71,11 +97,27 @@ def main() -> int:
 
     qml_path = _PACKAGE_DIR / "qml" / "Main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))
-    if not engine.rootObjects():
-        print(f"Could not load the rpncalc interface; file available: {qml_path.exists()}", file=sys.stderr)
-        return -1
+    roots = engine.rootObjects()
+    if not roots:
+        print(
+            f"Could not load the rpncalc interface; file available: {qml_path.exists()}",
+            file=sys.stderr,
+        )
 
-    return app.exec()
+    return Startup(
+        app=app,
+        backend=backend,
+        system_theme=system_theme,
+        engine=engine,
+        window=roots[0] if roots else None,
+    )
+
+
+def main() -> int:
+    started = start()
+    if not started.loaded:
+        return -1
+    return started.app.exec()
 
 
 if __name__ == "__main__":

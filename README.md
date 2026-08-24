@@ -110,7 +110,7 @@ pytest                                          # the whole suite, headless
 .venv/Scripts/python.exe tools/verify_core.py   # + a 100% gate on the core
 ```
 
-1410 tests, no display needed. The calculation core — number formatting, the
+1459 tests, no display needed. The calculation core — number formatting, the
 stack, and both engines — is held at **100% statement and branch coverage**, and
 its answers are checked against an independent 50-digit decimal implementation
 rather than against the same `math` functions it calls.

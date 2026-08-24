@@ -378,3 +378,42 @@ class TestPartialBranches:
         engine.press("spc")
         assert engine.command_line is None
         assert engine.depth == 0
+
+
+class TestEntryKeyRepeats:
+    """Pressing an entry key that is already spent. These were covered only when
+    the property tests happened to generate the sequence, which made the core's
+    branch coverage depend on a random seed - so they are pinned explicitly."""
+
+    def test_a_second_exponent_marker_is_ignored(self):
+        engine = RpnEngine()
+        for key in ("1", "eex", "5"):
+            engine.press(key)
+        assert engine.command_line == "1E5"
+        engine.press("eex")
+        assert engine.command_line == "1E5"
+        engine.press("enter")
+        assert engine.stack.peek(1) == 1e5
+
+    def test_a_second_decimal_point_is_ignored(self):
+        engine = RpnEngine()
+        for key in ("1", ".", "5"):
+            engine.press(key)
+        engine.press(".")
+        assert engine.command_line == "1.5"
+
+    def test_exponent_after_a_decimal_point_is_allowed(self):
+        engine = RpnEngine()
+        for key in ("1", ".", "5", "eex", "3"):
+            engine.press(key)
+        assert engine.command_line == "1.5E3"
+        engine.press("enter")
+        assert engine.stack.peek(1) == 1500.0
+
+    def test_eex_on_an_empty_command_line_assumes_a_mantissa_of_one(self):
+        engine = RpnEngine()
+        engine.press("eex")
+        assert engine.command_line == "1E"
+        engine.press("3")
+        engine.press("enter")
+        assert engine.stack.peek(1) == 1000.0

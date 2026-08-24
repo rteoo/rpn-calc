@@ -1,9 +1,8 @@
 """End-to-end tests through the Qt backend, in both entry modes.
 
-These are the only tests that need a QGuiApplication - everything below the
-backend is pure Python and tested headless elsewhere. The platform is forced
-offscreen and QSettings is redirected to a temporary directory so a test run
-never touches the real window geometry or saved modes.
+Everything below the backend is pure Python and tested headless elsewhere.
+The offscreen platform and the QSettings redirection live in `conftest.py`, so
+a test run never opens a window or touches real saved state.
 """
 
 from __future__ import annotations
@@ -19,20 +18,6 @@ from PySide6.QtGui import QGuiApplication  # noqa: E402
 
 from rpncalc.backend import Backend  # noqa: E402
 from rpncalc.numeric import FIX  # noqa: E402
-
-
-@pytest.fixture(scope="session")
-def qt_app(tmp_path_factory):
-    app = QGuiApplication.instance() or QGuiApplication([])
-    QCoreApplication.setOrganizationName("rpncalc-tests")
-    QCoreApplication.setApplicationName("suite")
-    QSettings.setDefaultFormat(QSettings.IniFormat)
-    QSettings.setPath(
-        QSettings.IniFormat,
-        QSettings.UserScope,
-        str(tmp_path_factory.mktemp("settings")),
-    )
-    return app
 
 
 @pytest.fixture
