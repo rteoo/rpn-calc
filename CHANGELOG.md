@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-08-24
+
+### Fixed
+
+- A leftover windowed frame the size of the work area no longer opens the
+  calculator ~1920 pixels wide. 0.1.1 stopped restoring maximized, but a
+  screen-filling saved size still fitted and was left as-is. Saved size is
+  restored only when it is no larger than the design face (~420×820).
+
 ## [0.1.1] - 2026-08-24
 
 ### Fixed
@@ -57,5 +66,6 @@ First release. An HP 50g-style RPN calculator wearing omacalc's face.
 - Errors never mutate the stack: `1 ENTER 0 ÷` reports `Infinite Result` with
   both operands still present.
 
+[0.1.2]: https://github.com/rteoo/rpn-calc/releases/tag/v0.1.2
 [0.1.1]: https://github.com/rteoo/rpn-calc/releases/tag/v0.1.1
 [0.1.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.1.0
