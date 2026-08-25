@@ -2,11 +2,14 @@
 
     python tools/build_exe.py
 
-Windows writes `dist/rpncalc.exe`. macOS writes `dist/rpn-calc.app`.
-Needs the build extra: `pip install -e ".[build]"`.
+Windows writes `dist/rpncalc/` and zips it to `dist/rpncalc-windows.zip`.
+macOS writes `dist/rpn-calc.app` and its zip. Needs the build extra:
+`pip install -e ".[build]"`.
 
-    --onedir   a folder build that starts in a fraction of the time
-               (macOS always produces a folder inside the .app)
+    --onefile  a single .exe instead of the folder. Convenient to hand to
+               someone, but it unpacks its whole payload to a new temporary
+               directory on every launch: 4.0 s to a window against 0.8 s
+               for the folder. Ignored on macOS.
     --debug    a console build that prints why it failed to start
 
 On macOS the bundle is ad-hoc signed unless RPNCALC_CODESIGN_IDENTITY names a
@@ -177,13 +180,34 @@ def zip_app(app: Path) -> Path:
     return archive
 
 
+def zip_folder(folder: Path, archive_stem: str) -> Path:
+    """Zip a folder build for release, keeping the folder itself inside.
+
+    The archive holds `rpncalc/...` rather than the loose files, so unzipping
+    cannot scatter a hundred-odd Qt DLLs across whatever directory the user
+    happened to be sitting in.
+    """
+    archive = folder.parent / f"{archive_stem}.zip"
+    archive.unlink(missing_ok=True)
+    shutil.make_archive(
+        str(archive.with_suffix("")),
+        "zip",
+        root_dir=str(folder.parent),
+        base_dir=folder.name,
+    )
+    return archive
+
+
 def main() -> int:
     debug = "--debug" in sys.argv
-    onedir = "--onedir" in sys.argv
+    # A folder is the default: one file costs about three extra seconds on
+    # every launch, and a release ships the folder zipped anyway.
+    onefile = "--onefile" in sys.argv and sys.platform != "darwin"
+    onedir = not onefile
     if debug:
         os.environ["RPNCALC_BUILD_DEBUG"] = "1"
-    if onedir:
-        os.environ["RPNCALC_BUILD_ONEDIR"] = "1"
+    if onefile:
+        os.environ["RPNCALC_BUILD_ONEFILE"] = "1"
 
     try:
         import PyInstaller  # noqa: F401
@@ -261,6 +285,12 @@ def main() -> int:
     if onedir:
         total = sum(f.stat().st_size for f in exe.parent.rglob("*") if f.is_file())
         print(f"\n{exe.parent}  ({total / 1_048_576:.1f} MB in the folder)")
+        # The folder is what starts fast; the zip is what a release attaches.
+        # Named for the host it was built on, because a Linux folder is not a
+        # Windows one and a release should not have to guess which it got.
+        suffix = "windows" if sys.platform == "win32" else sys.platform
+        archive = zip_folder(exe.parent, f"{stem}-{suffix}")
+        print(f"{archive}  ({archive.stat().st_size / 1_048_576:.1f} MB zipped)")
     else:
         print(f"\n{exe}  ({exe.stat().st_size / 1_048_576:.1f} MB)")
     return 0
