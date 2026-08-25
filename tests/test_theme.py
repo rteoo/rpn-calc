@@ -207,3 +207,12 @@ class TestSystemTheme:
         # No opinion from Qt, so it falls through to the registry or to the
         # current value - either way it must still answer with a bool.
         assert isinstance(theme._detect_dark_mode(), bool)
+
+    def test_text_scale_is_identity_without_a_windows_dpi(self, qt_app, monkeypatch):
+        import rpncalc.systemtheme as module
+
+        monkeypatch.setattr(module, "_read_registry_dword", lambda *_: None)
+        theme = SystemTheme()
+        # Retina on a Mac is Qt's problem, not ours: a 2.0 devicePixelRatio
+        # must not double the window.
+        assert theme._detect_text_scale() == 1.0

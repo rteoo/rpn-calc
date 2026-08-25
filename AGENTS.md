@@ -16,7 +16,7 @@ the C++ did not.
 ## Commands
 
 ```sh
-.venv/Scripts/pip install -e ".[dev]"   # Windows; use .venv/bin on Linux
+.venv/bin/pip install -e ".[dev]"        # macOS / Linux; use .venv\Scripts on Windows
 python -m rpncalc                        # run
 pytest                                   # full suite, headless
 ```
@@ -35,15 +35,19 @@ to a temp directory.
 | `alg_engine.py` | Port of omacalc's infix token machinery. |
 | `keymap.py` | The faceplate as data, plus the shift state machine. |
 | `backend.py` | The **only** Qt-aware engine file; the QML context property `backend`. |
-| `systemtheme.py` | Windows dark mode / text scale; Omarchy `colors.toml` reader kept. |
+| `host.py` | Which OS this is (Windows / macOS / iOS / Linux). Stdlib only. |
+| `systemtheme.py` | Dark mode (Qt `colorScheme`, Windows registry fallback) and text scale. |
 | `launchkey.py` | The keyboard's calculator key, bound through the Windows registry. |
 | `qml/` | `Main.qml`, `CalcButton.qml`, `RpnStackView.qml`, `SoftMenu.qml`, `StatusBar.qml`. |
 
-`launchkey.py` is stdlib-only for the same reason `systemtheme.py` is separate: the
-host integration is not the calculator, and it has to import cleanly on Linux.
+`host.py` and `launchkey.py` are stdlib-only for the same reason `systemtheme.py`
+is separate: the host integration is not the calculator, and it has to import
+cleanly on Linux, macOS, and a future iOS interpreter.
 
 Keep the engine layer free of Qt imports. That split is upstream's too — omacalc's
 `tests.pro` compiles `backend.cpp` without `systemtheme.cpp` for the same reason.
+It is also why an iOS port can keep `numeric.py` / `rpn_engine.py` / `qml/` and
+only replace the host.
 
 ## RPN semantics that must not regress
 
@@ -133,9 +137,33 @@ nothing to outrank.
   subkey. The live `AppKey\18` is the user's actual desktop setting - a test run
   that writes it has broken something outside the repo.
 - Releasing the key leaves a value pointing at *another* application alone.
-- The toggle lives in a context menu on the display (right-click, or `Ctrl+,`).
+- The toggle lives in a context menu on the display (right-click, `Ctrl+,` /
+  `⌘,`, or a long-press on a touch screen).
   The faceplate is a fixed 50g replica with no room for a settings key, and
   inventing one would be a deviation the Faceplate section would have to defend.
+
+## Apple platforms
+
+macOS is a desktop host, same as Windows: `python -m rpncalc` from a venv, or
+`python tools/build_exe.py` for `dist/rpn-calc.app`. Dark mode follows
+`QGuiApplication.styleHints().colorScheme()`. Retina is Qt's logical pixels;
+do not multiply the window by `devicePixelRatio`. Command-key shortcuts are
+bound next to the Ctrl ones. The calculator-key toggle stays dimmed — there
+is no `AppKey\18` on a Mac.
+
+`python -m rpncalc --smoke` (and `tools/smoke_macos.py`) must run on cocoa,
+not offscreen. The `macos-app` CI job builds, ad-hoc signs, smokes, and
+uploads `rpn-calc.app.zip`. Tagged `v*` releases attach that zip and the
+Windows `.exe`. Notarization is opt-in via Developer ID secrets; without
+them the zip still ships and first-open is right-click → Open.
+
+iOS is a host port, not a rewrite. The engines stay Python; the face stays
+QML (`SafeArea`, long-press, `backend.isMobile`). PySide6 has no iOS wheel,
+so the next step is a Qt-for-iOS `Backend` that publishes the same properties
+and slots. The contract, the portrait `Info.plist`, and the 1024px App Icon
+are in `docs/plans/apple-platforms.md` and `packaging/ios/`. `host.py`
+already recognises `sys.platform == "ios"` (PEP 730) and the older BeeWare
+`darwin`+`iPhone*` embedding.
 
 ## Known gaps
 
@@ -146,7 +174,7 @@ numbers, no matrices, no equation writer. `EVAL`, `'`, `SYMB`, and
 ## Validating the calculation core
 
 ```sh
-.venv/Scripts/python.exe tools/verify_core.py
+python tools/verify_core.py
 ```
 
 Runs the suite under branch coverage and **fails if `numeric.py`, `stack.py`,
@@ -210,14 +238,25 @@ Two rules for this area:
   traceback, so a startup failure is silent.
 - **The icon lives in the package, at `src/rpncalc/icons/`, not in `packaging/`.**
   `setWindowIcon` needs it at runtime, so it has to ship with the source too, not
-  only be baked into the `.exe` resource. Qt reads every frame out of the one
-  `.ico`, so there is no PNG set to keep in sync.
+  only be baked into the `.exe` / `.app` resource. Windows reads the `.ico`;
+  the Dock reads the `.icns`; iOS takes the opaque 1024px PNG in
+  `packaging/ios/Assets.xcassets`. `python tools/make_icon.py` writes all of
+  them from one drawing function.
 - **Setting the window icon is not enough on Windows.** The taskbar groups
   buttons by AppUserModelID and a process launched by the interpreter inherits
   the interpreter's, so `python -m rpncalc` shows the *Python* icon in the
   taskbar however the window icon is set. `_claim_taskbar_identity` claims an ID
-  of our own; it must stay guarded by `sys.platform`, as `ctypes.windll` does not
-  exist anywhere else.
+  of our own; it must stay guarded by `host.is_windows()`, as `ctypes.windll`
+  does not exist anywhere else.
+- **macOS always produces an `.app` bundle** (a folder build inside). One-file
+  on a Mac is what Gatekeeper fights. The bundle id is `io.github.rteoo.rpncalc`.
+  Cross-compiling from Linux or Windows is not possible; run the build on a Mac.
+  `tools/build_exe.py` ad-hoc signs and zips it. A tagged `v*` release uploads
+  that zip; notarization waits on Developer ID secrets.
+- **`--smoke` refuses the offscreen plugin.** `start()` under
+  `QT_QPA_PLATFORM=offscreen` is not evidence the app opens. On a Mac the
+  platform must be cocoa. `tools/smoke_macos.py` inspects Info.plist, the
+  `.icns`, and `codesign -dv` before launching the binary.
 - **An offscreen `grabWindow()` renders whether or not the window would really
   show.** It is not evidence the app opens; check a real window for that.
 

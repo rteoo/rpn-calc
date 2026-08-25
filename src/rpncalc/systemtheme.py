@@ -1,8 +1,14 @@
 """System dark-mode and text-scale detection.
 
 Replaces omacalc's xdg-desktop-portal/D-Bus reader (Omarchy-specific) with a
-Windows-native path, while keeping the same `SystemTheme` signal contract so
+host-native path, while keeping the same `SystemTheme` signal contract so
 `backend.py` and `__main__.py` can wire it up exactly like the C++ original.
+
+Dark mode prefers Qt's `colorScheme()` (Qt 6.5+, works on Windows, macOS,
+iOS, and Linux). Windows keeps a registry fallback for the case Qt reports
+`Unknown`. Text scale is Windows LogPixels; on Apple hosts Retina is already
+mapped to logical pixels by Qt, so a 2x backing store must not double the
+window. iOS Dynamic Type is left for the iOS host to publish later.
 """
 
 from __future__ import annotations
@@ -64,6 +70,7 @@ class SystemTheme(QObject):
 
     def _detect_dark_mode(self) -> bool:
         # Qt 6.5+ reports the platform's color scheme directly; prefer it.
+        # This is the path that fires on macOS (Aqua / Dark Mode) and iOS.
         style_hints = QGuiApplication.styleHints()
         if style_hints is not None:
             # colorScheme() returns a Qt.ColorScheme enum member, not an int -
@@ -85,6 +92,9 @@ class SystemTheme(QObject):
         log_pixels = _read_registry_dword(_DESKTOP_KEY, "LogPixels")
         if log_pixels:
             return log_pixels / 96.0
+        # macOS / iOS / Linux: Qt already maps a Retina backing store to
+        # logical pixels. Using devicePixelRatio here would open a 2x window
+        # on a MacBook and look like the old "it opened maximized" bug.
         return 1.0
 
     def _set_dark_mode(self, dark_mode: bool) -> None:

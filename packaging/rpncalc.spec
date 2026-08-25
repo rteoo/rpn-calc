@@ -1,11 +1,13 @@
-# PyInstaller spec for the Windows build.  Build with tools/build_exe.py.
+# PyInstaller spec for the desktop builds.  Build with tools/build_exe.py.
 #
-# One file, no console.  PySide6 drags in the whole Qt distribution unless it
-# is told otherwise, so the excludes below are load-bearing: without them the
-# executable carries WebEngine, 3D, multimedia and charting for a calculator
-# that draws seven rows of buttons.
+# Windows: one file, no console.  macOS: an .app bundle (a folder build
+# inside, because one-file .app is what Gatekeeper fights).  PySide6 drags
+# in the whole Qt distribution unless it is told otherwise, so the excludes
+# below are load-bearing: without them the payload carries WebEngine, 3D,
+# multimedia and charting for a calculator that draws seven rows of buttons.
 
 import os
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files
@@ -36,7 +38,10 @@ EXCLUDED_PYTHON = [
     "email", "html", "http", "xmlrpc", "pytest", "PIL", "numpy",
 ]
 
-ICON = PACKAGE / "icons" / "rpncalc.ico"
+ICON_ICO = PACKAGE / "icons" / "rpncalc.ico"
+ICON_ICNS = PACKAGE / "icons" / "rpncalc.icns"
+MACOS = sys.platform == "darwin"
+VERSION = os.environ.get("RPNCALC_VERSION", "0.0.0")
 
 # The icon ships inside the package, not beside the spec: the app sets it as its
 # own window icon at startup, so it has to be there when running from source too.
@@ -55,15 +60,16 @@ DEBUG_BUILD = os.environ.get("RPNCALC_BUILD_DEBUG") == "1"
 # every launch: the bootloader unpacks the whole 53 MB payload to a temporary
 # directory before Qt starts, about three seconds each time, and it never warms
 # up. A folder build starts in a fraction of that. RPNCALC_BUILD_ONEDIR=1
-# selects it.
-ONEDIR_BUILD = os.environ.get("RPNCALC_BUILD_ONEDIR") == "1"
+# selects it. macOS always uses a folder build: that is what goes inside the
+# .app bundle.
+ONEDIR_BUILD = os.environ.get("RPNCALC_BUILD_ONEDIR") == "1" or MACOS
 
 a = Analysis(
     [str(ROOT / "packaging" / "entry.py")],
     pathex=[str(ROOT / "src")],
     binaries=[],
     datas=datas,
-    hiddenimports=["rpncalc.backend", "rpncalc.systemtheme"],
+    hiddenimports=["rpncalc.backend", "rpncalc.systemtheme", "rpncalc.host", "rpncalc.launchkey"],
     hookspath=[],
     runtime_hooks=[],
     excludes=EXCLUDED_QT + EXCLUDED_PYTHON,
@@ -116,11 +122,7 @@ pyz = PYZ(a.pure)
 
 name = "rpncalc-debug" if DEBUG_BUILD else "rpncalc"
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    [] if ONEDIR_BUILD else a.binaries,
-    [] if ONEDIR_BUILD else a.datas,
+exe_kwargs = dict(
     exclude_binaries=ONEDIR_BUILD,
     name=name,
     debug=False,
@@ -132,12 +134,24 @@ exe = EXE(
     # is the clearest sign of a Python program wearing an .exe costume.
     console=DEBUG_BUILD,
     disable_windowed_traceback=False,
-    icon=str(ICON),
-    version=str(ROOT / "packaging" / "version_info.txt"),
+)
+if MACOS and ICON_ICNS.is_file():
+    exe_kwargs["icon"] = str(ICON_ICNS)
+elif ICON_ICO.is_file():
+    exe_kwargs["icon"] = str(ICON_ICO)
+if sys.platform == "win32":
+    exe_kwargs["version"] = str(ROOT / "packaging" / "version_info.txt")
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [] if ONEDIR_BUILD else a.binaries,
+    [] if ONEDIR_BUILD else a.datas,
+    **exe_kwargs,
 )
 
 if ONEDIR_BUILD:
-    COLLECT(
+    coll = COLLECT(
         exe,
         a.binaries,
         a.datas,
@@ -145,3 +159,28 @@ if ONEDIR_BUILD:
         upx=False,
         name=name,
     )
+    if MACOS:
+        BUNDLE(
+            coll,
+            name="rpn-calc.app",
+            icon=str(ICON_ICNS) if ICON_ICNS.is_file() else None,
+            bundle_identifier="io.github.rteoo.rpncalc",
+            info_plist={
+                "CFBundleName": "rpn-calc",
+                "CFBundleDisplayName": "rpn-calc",
+                "CFBundleIdentifier": "io.github.rteoo.rpncalc",
+                "CFBundleVersion": VERSION,
+                "CFBundleShortVersionString": VERSION,
+                "CFBundlePackageType": "APPL",
+                "CFBundleSignature": "????",
+                "LSMinimumSystemVersion": "12.0",
+                "LSApplicationCategoryType": "public.app-category.utilities",
+                "NSHighResolutionCapable": True,
+                "NSRequiresAquaSystemAppearance": False,
+                "NSSupportsAutomaticGraphicsSwitching": True,
+                "NSHumanReadableCopyright": (
+                    "MIT. Derived from omacalc. iA Writer Mono S under OFL 1.1."
+                ),
+                "CFBundleIconFile": "rpncalc.icns",
+            },
+        )

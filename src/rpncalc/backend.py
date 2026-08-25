@@ -25,7 +25,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor, QGuiApplication
 
-from . import alg_engine, launchkey
+from . import alg_engine, host, launchkey
 from .keymap import KEY_ROWS, Shift, ShiftState, resolve
 from .numeric import ENG, FIX, SCI, STD, NumberFormat, parse_number
 from .rpn_engine import DEFAULT_ANGLE_MODE, RpnEngine
@@ -157,6 +157,18 @@ class Backend(QObject):
     themeAccent = Property(str, _get_theme_accent, notify=themeColorsChanged)
     themeSelection = Property(str, _get_theme_selection, notify=themeColorsChanged)
 
+    def _get_is_mobile(self) -> bool:
+        return host.is_mobile()
+
+    def _get_has_pointer_hover(self) -> bool:
+        return host.has_pointer_hover()
+
+    # Constant: the host does not change while the process is running. QML
+    # uses these to skip window-geometry restore and to offer a long-press
+    # instead of a right-click, without the calculation core knowing.
+    isMobile = Property(bool, _get_is_mobile, constant=True)
+    hasPointerHover = Property(bool, _get_has_pointer_hover, constant=True)
+
     # -- slots ------------------------------------------------------------------
 
     @Slot(str)
@@ -195,6 +207,15 @@ class Backend(QObject):
 
     @Slot(result="QVariantMap")
     def windowGeometry(self) -> dict:
+        if not host.remembers_window_geometry():
+            return {
+                "valid": False,
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0,
+                "maximized": False,
+            }
         settings = QSettings()
         geometry = settings.value(_WINDOW_GEOMETRY_SETTING, QRect())
         if not isinstance(geometry, QRect):
@@ -250,6 +271,8 @@ class Backend(QObject):
 
     @Slot(int, int, int, int, bool)
     def saveWindowGeometry(self, x: int, y: int, width: int, height: int, maximized: bool) -> None:
+        if not host.remembers_window_geometry():
+            return
         settings = QSettings()
         settings.setValue(_WINDOW_GEOMETRY_SETTING, QRect(x, y, width, height))
         settings.setValue(_WINDOW_MAXIMIZED_SETTING, maximized)
