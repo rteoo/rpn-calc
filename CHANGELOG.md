@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-08-25
 
 ### Added
 
@@ -138,6 +138,7 @@ First release. An HP 50g-style RPN calculator wearing omacalc's face.
 - Errors never mutate the stack: `1 ENTER 0 ÷` reports `Infinite Result` with
   both operands still present.
 
+[0.3.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.3.0
 [0.2.1]: https://github.com/rteoo/rpn-calc/releases/tag/v0.2.1
 [0.2.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.2.0
 [0.1.2]: https://github.com/rteoo/rpn-calc/releases/tag/v0.1.2
