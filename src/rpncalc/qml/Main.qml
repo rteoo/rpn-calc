@@ -91,11 +91,34 @@ ApplicationWindow {
     // The 50g faceplate has no settings key and this window has no room to
     // invent one, so the handful of host-side options live in a context menu
     // on the display. Right-click it, or Ctrl+comma.
+    //
+    // Material MenuItem measures itself against the style's default font and
+    // then draws with the application font, which this app scales to the
+    // desktop text scale. The popup comes out too narrow and the label elides
+    // to "Launch on th…". Size the menu from the string we actually paint,
+    // including the check indicator the style draws but does not reserve.
+    FontMetrics {
+        id: calculatorKeyMetrics
+        // Follow the item's font, not win.font: Material restyles MenuItem
+        // after creation, which is how the popup was measured too narrow.
+        font: calculatorKeyItem.font
+    }
+
     Menu {
         id: settingsMenu
+        objectName: "settingsMenu"
+        font: calculatorKeyItem.font
+        width: {
+            var em = Math.max(1, calculatorKeyMetrics.height)
+            var label = calculatorKeyMetrics.advanceWidth(calculatorKeyItem.text)
+            return Math.ceil(label) + Math.ceil(em * 4)
+        }
 
         MenuItem {
+            id: calculatorKeyItem
+            objectName: "calculatorKeyItem"
             text: qsTr("Launch on the calculator key")
+            font: win.font
             // Dimmed rather than hidden where there is no registry to write,
             // the same way the keys this calculator cannot honour are dimmed.
             enabled: backend.calculatorKeySupported
@@ -400,8 +423,10 @@ ApplicationWindow {
         width = Math.max(minimumWidth, size.width);
         height = Math.max(minimumHeight, size.height);
 
-        if (geometry.valid && geometry.maximized)
-            showMaximized();
+        // Never restore maximized. The faceplate is a fixed proportion; filling
+        // the screen stretches it, and a stale `window/maximized` flag (left
+        // by the oversized-window bug) had no way to clear itself: this
+        // branch re-maximized, then onDestruction wrote the flag back.
     }
 
     Component.onDestruction: backend.saveWindowGeometry(

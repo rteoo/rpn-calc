@@ -172,6 +172,10 @@ class TestWindowGeometry:
     True, so `maximized` was always true once anything had been saved; and the
     design size grown by a 150% text scale is 1230 pixels tall, which does not
     fit a 1080-pixel screen, so the window was born filling its display.
+
+    Restoring a saved maximized flag is also refused: the faceplate is a fixed
+    proportion, and a stale true (left by those bugs) re-maximized on every
+    launch, then wrote itself back on close.
     """
 
     def geometry_of(self, started):
@@ -214,6 +218,27 @@ class TestWindowGeometry:
 
         started = start([])
         assert started.window.property("visibility") != QWindow.Maximized
+
+    def test_a_stale_maximized_flag_does_not_reopen_maximized(self, clean_settings):
+        from PySide6.QtCore import QRect, QSettings
+        from PySide6.QtGui import QWindow
+
+        # The reported case: window/maximized stuck at true from the original
+        # oversized-window bug. Opening maximized would stretch the faceplate
+        # and write the flag straight back, so there was no way out.
+        room = self.available()
+        settings = QSettings()
+        settings.setValue(
+            "window/geometry", QRect(40, 40, room.width() * 2, room.height() * 2)
+        )
+        settings.setValue("window/maximized", True)
+        settings.sync()
+
+        started = start([])
+        assert started.window.property("visibility") != QWindow.Maximized
+        width, height = self.geometry_of(started)
+        assert width <= room.width()
+        assert height <= room.height()
 
     def test_a_window_taller_than_the_screen_is_shrunk_to_fit(self, clean_settings):
         from PySide6.QtCore import QRect, QSettings
@@ -347,3 +372,36 @@ class TestFitToScreen:
         else:
             assert fitted["height"] <= room.height()
             assert fitted["width"] / fitted["height"] == pytest.approx(630 / 1230, rel=0.01)
+
+
+class TestSettingsMenu:
+    """The calculator-key toggle is the only settings surface.
+
+    Material MenuItem sizes itself against the style font, then this app draws
+    it with the scaled interface font, so the popup was too narrow and the
+    label elided to "Launch on th…".
+    """
+
+    LABEL = "Launch on the calculator key"
+
+    def test_the_item_keeps_its_full_label(self, clean_settings):
+        from PySide6.QtCore import QObject
+
+        started = start([])
+        item = started.window.findChild(QObject, "calculatorKeyItem")
+        assert item is not None
+        assert item.property("text") == self.LABEL
+
+    def test_the_popup_is_wider_than_the_label(self, clean_settings):
+        from PySide6.QtCore import QObject
+        from PySide6.QtGui import QFontMetrics
+
+        started = start([])
+        menu = started.window.findChild(QObject, "settingsMenu")
+        item = started.window.findChild(QObject, "calculatorKeyItem")
+        assert menu is not None and item is not None
+
+        font = item.property("font")
+        advance = QFontMetrics(font).horizontalAdvance(self.LABEL)
+        em = font.pixelSize() if font.pixelSize() > 0 else max(1, round(font.pointSizeF() * 4 / 3))
+        assert menu.property("width") >= advance + em
