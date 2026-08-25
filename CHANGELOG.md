@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-25
+
+### Added
+
+- **macOS as a desktop host.** Run from source with the same venv as Linux;
+  `python tools/build_exe.py` on a Mac writes `dist/rpn-calc.app` with bundle
+  id `io.github.rteoo.rpncalc`, a Retina `.icns`, and Dark Mode following
+  the system. Command-key shortcuts (`⌘C` `⌘V` `⌘Z` `⌘M` `⌘Q` `⌘,`) sit next
+  to the existing Ctrl bindings. Option+letter scientific shortcuts match
+  the physical key, so a German layout's ß does not swallow `√`.
+- **iOS-ready face and host seam.** `SafeArea` insets the notch; a long-press
+  on the display opens the settings a right-click opens on the desktop;
+  `backend.isMobile` fills the screen and skips window-geometry restore.
+  `host.py` recognises PEP 730 `sys.platform == "ios"` and the older BeeWare
+  embedding. The Backend contract, a portrait `Info.plist`, and a 1024px App
+  Store icon live in `docs/plans/apple-platforms.md` and `packaging/ios/`.
+- **CI** on Ubuntu, Windows, and macOS, including a cocoa smoke of
+  `python -m rpncalc` and a PyInstaller `.app` artifact on `macos-latest`.
+  Tagged `v*` releases attach `rpncalc.exe` and `rpn-calc-macos.zip`.
+
+### Changed
+
+- Text scale on Apple hosts stays at 1.0. Qt already maps a Retina backing
+  store to logical pixels; multiplying by `devicePixelRatio` would reopen the
+  "it opened maximized" bug on a MacBook.
+
 ## [0.1.2] - 2026-08-24
 
 ### Fixed
@@ -66,6 +92,7 @@ First release. An HP 50g-style RPN calculator wearing omacalc's face.
 - Errors never mutate the stack: `1 ENTER 0 ÷` reports `Infinite Result` with
   both operands still present.
 
+[0.2.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.2.0
 [0.1.2]: https://github.com/rteoo/rpn-calc/releases/tag/v0.1.2
 [0.1.1]: https://github.com/rteoo/rpn-calc/releases/tag/v0.1.1
 [0.1.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.1.0

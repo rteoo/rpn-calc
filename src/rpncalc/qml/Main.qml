@@ -65,32 +65,33 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: "Ctrl+Z"
+        sequences: ["Ctrl+Z", "Meta+Z"]
         context: Qt.ApplicationShortcut
         onActivated: backend.pressCommand("undo")
     }
 
     Shortcut {
-        sequence: "Ctrl+M"
+        sequences: ["Ctrl+M", "Meta+M"]
         context: Qt.ApplicationShortcut
         onActivated: backend.toggleEntryMode()
     }
 
     Shortcut {
-        sequence: "Ctrl+Q"
+        sequences: ["Ctrl+Q", "Meta+Q"]
         context: Qt.ApplicationShortcut
         onActivated: win.close()
     }
 
     Shortcut {
-        sequence: "Ctrl+,"
+        sequences: ["Ctrl+,", "Meta+,"]
         context: Qt.ApplicationShortcut
         onActivated: settingsMenu.popup()
     }
 
     // The 50g faceplate has no settings key and this window has no room to
     // invent one, so the handful of host-side options live in a context menu
-    // on the display. Right-click it, or Ctrl+comma.
+    // on the display. Right-click it, Ctrl/⌘+comma, or press and hold on a
+    // touch screen.
     //
     // Material MenuItem measures itself against the style's default font and
     // then draws with the application font, which this app scales to the
@@ -137,29 +138,38 @@ ApplicationWindow {
 
     Item {
         id: face
+        objectName: "face"
         anchors.fill: parent
-        anchors.margins: win.scaledSize(16)
+        // SafeArea is zero on a desktop and the notch / home indicator on
+        // iPhone. Adding it here, not to the window, keeps the 420×820
+        // design size intact for geometry restore on macOS and Windows.
+        anchors.topMargin: win.scaledSize(16) + SafeArea.margins.top
+        anchors.bottomMargin: win.scaledSize(16) + SafeArea.margins.bottom
+        anchors.leftMargin: win.scaledSize(16) + SafeArea.margins.left
+        anchors.rightMargin: win.scaledSize(16) + SafeArea.margins.right
         focus: true
 
         // The physical keyboard drives commands directly rather than pretending
         // to press keycaps: shift planes are reached with Alt (left) and
-        // Ctrl+Alt (right), which no keycap can express.
+        // Ctrl+Alt (right), which no keycap can express. On macOS, Option is
+        // Alt and Command is Meta — match the physical key, not the composed
+        // character, or Option+S becomes ß and never reaches sqrt.
         Keys.onPressed: function(event) {
-            if (event.modifiers & Qt.ControlModifier) {
-                return;  // reserved for the Shortcuts above
+            if (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) {
+                return;  // reserved for the Shortcuts above (Ctrl on Windows, ⌘ on macOS)
             }
 
             var command = "";
             if (event.modifiers & Qt.AltModifier) {
-                switch (event.text.toLowerCase()) {
-                case "s": command = "sqrt"; break;
-                case "q": command = "sq"; break;
-                case "l": command = "ln"; break;
-                case "e": command = "exp"; break;
-                case "g": command = "log"; break;
-                case "i": command = "inv"; break;
-                case "p": command = "pi"; break;
-                case "a": command = "abs"; break;
+                switch (event.key) {
+                case Qt.Key_S: command = "sqrt"; break;
+                case Qt.Key_Q: command = "sq"; break;
+                case Qt.Key_L: command = "ln"; break;
+                case Qt.Key_E: command = "exp"; break;
+                case Qt.Key_G: command = "log"; break;
+                case Qt.Key_I: command = "inv"; break;
+                case Qt.Key_P: command = "pi"; break;
+                case Qt.Key_A: command = "abs"; break;
                 default: return;
                 }
             } else if (event.key >= Qt.Key_F1 && event.key <= Qt.Key_F6) {
@@ -225,11 +235,21 @@ ApplicationWindow {
 
             // Declared first so it sits under everything: it takes only the
             // right button, which nothing above it accepts, and leaves the
-            // soft menu's own left-click handling untouched.
+            // soft menu's own left-click handling untouched. A long-press is
+            // the touch equivalent of a right-click; it is restricted to
+            // actual touch screens so a Mac trackpad click-and-hold does
+            // not pop the menu.
             MouseArea {
                 anchors.fill: parent
                 acceptedButtons: Qt.RightButton
                 onClicked: settingsMenu.popup()
+            }
+
+            TapHandler {
+                acceptedDevices: PointerDevice.TouchScreen
+                acceptedButtons: Qt.LeftButton
+                longPressThreshold: 0.5
+                onLongPressed: settingsMenu.popup()
             }
 
             StatusBar {
@@ -358,6 +378,7 @@ ApplicationWindow {
                             labelRight: modelData.labelRight
                             alphaLabel: modelData.alpha
                             live: modelData.live
+                            hoverEnabled: backend.hasPointerHover
                             armedShift: backend.shiftState
                             pageColor: win.pageColor
                             inkColor: win.inkColor
@@ -387,10 +408,10 @@ ApplicationWindow {
     onWidthChanged: trackNormalGeometry()
     onHeightChanged: trackNormalGeometry()
 
-    onVisibilityChanged: {
-        if (visibility === Window.Maximized || visibility === Window.FullScreen)
+    onVisibilityChanged: function() {
+        if (win.visibility === Window.Maximized || win.visibility === Window.FullScreen)
             wasMaximized = true;
-        else if (visibility === Window.Windowed)
+        else if (win.visibility === Window.Windowed)
             wasMaximized = false;
     }
 
@@ -404,6 +425,15 @@ ApplicationWindow {
     // virtual desktop. Across monitors at different offsets that is larger than
     // any single screen, so nothing ever measured as too big.
     Component.onCompleted: {
+        if (backend.isMobile) {
+            // A phone has no window chrome to restore. Fill the screen and
+            // let uiScale shrink the 420×820 face to whatever is left after
+            // the SafeArea inset.
+            win.flags = Qt.Window | Qt.MaximizeUsingFullscreenGeometryHint;
+            win.visibility = Window.FullScreen;
+            return;
+        }
+
         var geometry = backend.windowGeometry();
         var wantedX = x;
         var wantedY = y;
@@ -434,7 +464,10 @@ ApplicationWindow {
         // branch re-maximized, then onDestruction wrote the flag back.
     }
 
-    Component.onDestruction: backend.saveWindowGeometry(
-        normalGeometry.x, normalGeometry.y,
-        normalGeometry.width, normalGeometry.height, wasMaximized)
+    Component.onDestruction: {
+        if (!backend.isMobile)
+            backend.saveWindowGeometry(
+                normalGeometry.x, normalGeometry.y,
+                normalGeometry.width, normalGeometry.height, wasMaximized)
+    }
 }

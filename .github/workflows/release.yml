@@ -1,0 +1,47 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev,build]"
+      - name: Smoke from source (cocoa)
+        run: python tools/smoke_macos.py --source
+      - name: Build .app
+        run: python tools/build_exe.py
+      - name: Smoke the bundle
+        run: python tools/smoke_macos.py dist/rpn-calc.app
+      - name: Name the zip for the release
+        run: mv dist/rpn-calc.app.zip dist/rpn-calc-macos.zip
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/rpn-calc-macos.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[build]"
+      - name: Build .exe
+        run: python tools/build_exe.py
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/rpncalc.exe
+          generate_release_notes: true
+          fail_on_unmatched_files: true

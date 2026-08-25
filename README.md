@@ -8,18 +8,22 @@ under `MODE`. The keyboard is the 50g's lower block, shift planes and all.
 
 ## Download
 
-A built Windows executable ships with each
-[release](https://github.com/rteoo/rpn-calc/releases/latest) — one self-contained
-file, no Python installation needed. To run from source instead, install it.
+A built Windows executable and a macOS `.app` zip ship with each
+[release](https://github.com/rteoo/rpn-calc/releases/latest). No Python
+installation needed. The macOS zip is ad-hoc signed; Gatekeeper's first-open
+is right-click → Open until a Developer ID notarizes it. To run from source
+on any desktop, install it.
 
 ## Install
 
 ```sh
-python -m venv .venv
-.venv/Scripts/pip install -e ".[dev]"
+python3 -m venv .venv
+source .venv/bin/activate          # macOS / Linux
+# .venv\Scripts\activate           # Windows
+pip install -e ".[dev]"
 ```
 
-On Linux use `.venv/bin/pip`. PySide6 is the only runtime dependency.
+PySide6 is the only runtime dependency. Python 3.10 or newer.
 
 ## Run
 
@@ -86,42 +90,60 @@ brightens on the face so you can read the next key rather than remember it.
 | `←` `→` | Rotate the top three / swap levels 1 and 2 |
 | `F1`–`F6` | Interactive stack soft menu |
 | `Alt+s` `Alt+q` `Alt+l` `Alt+e` `Alt+g` `Alt+i` `Alt+p` `Alt+a` | √, x², LN, e^x, LOG, 1/x, π, ABS |
-| `Ctrl+Z` | Undo |
-| `Ctrl+M` | Toggle RPN / ALG |
-| `Ctrl+C` / `Ctrl+V` | Copy / paste a number |
+| `Ctrl+Z` / `⌘Z` | Undo |
+| `Ctrl+M` / `⌘M` | Toggle RPN / ALG |
+| `Ctrl+C` / `⌘C`, `Ctrl+V` / `⌘V` | Copy / paste a number |
+| `Ctrl+,` / `⌘,` | Settings (right-click the display, or press and hold on a touch screen) |
 
-## Building a Windows executable
+## Building a desktop app
 
 ```sh
-.venv/Scripts/pip install -e ".[build]"
-.venv/Scripts/python.exe tools/build_exe.py
+pip install -e ".[build]"
+python tools/build_exe.py
 ```
 
-Produces `dist/rpncalc.exe` — one self-contained file, about 53 MB, no Python
-installation needed on the target machine.
+| Host | Output |
+|---|---|
+| Windows | `dist/rpncalc.exe` — one self-contained file, about 53 MB |
+| macOS | `dist/rpn-calc.app` and `dist/rpn-calc.app.zip` — ad-hoc signed |
 
-| | Startup | Shape |
-|---|---|---|
-| `tools/build_exe.py` | ~3.3 s | a single `.exe` |
-| `tools/build_exe.py --onedir` | ~1.0 s | a `dist/rpncalc/` folder |
+`--onedir` trades shape for a ~1 s startup (macOS always uses a folder inside the
+`.app`). `--debug` produces a console build that prints why it failed to start,
+which a windowed build cannot.
 
-One file unpacks its whole payload to a temporary directory on **every** launch,
-so it never gets faster. If you launch the calculator often, the folder build is
-worth the extra shape. `--debug` produces a console build that prints why it
-failed to start, which a windowed build cannot.
+On a Mac, `python tools/smoke_macos.py --source` opens the real cocoa window
+and quits; `python tools/smoke_macos.py dist/rpn-calc.app` does the same for
+the frozen bundle. Offscreen is refused — that is not a window.
 
-The icon is committed at `src/rpncalc/icons/rpncalc.ico` — inside the package,
-because the app sets it as its own window icon at startup, not only as the
-executable's resource. One multi-resolution `.ico` covers the window, the
-taskbar, Explorer and a favicon; `rpncalc.png` beside it is the 256px form a
-Linux `.desktop` entry wants. Regenerate both with `python tools/make_icon.py`
-only if the icon should change.
+A tagged `v*` release attaches `rpncalc.exe` and `rpn-calc-macos.zip`. The
+macOS zip is ad-hoc signed; first-open is right-click → Open until a Developer
+ID notarizes it. `xattr -cr dist/rpn-calc.app` is the local escape.
+
+The icon is committed at `src/rpncalc/icons/` — inside the package, because the
+app sets it as its own window icon at startup, not only as the executable's
+resource. `rpncalc.ico` covers Windows; `rpncalc.icns` covers the Dock;
+`rpncalc.png` is the 256px form a Linux `.desktop` entry wants;
+`rpncalc-1024.png` is the opaque App Store icon. Regenerate all of them with
+`python tools/make_icon.py` only if the icon should change.
+
+An unsigned macOS `.app` is quarantined by Gatekeeper. On the machine that
+built it, `xattr -cr dist/rpn-calc.app` clears that. CI ad-hoc signs the
+bundle; notarization is a Developer ID secret on the release workflow.
+
+## iOS
+
+The calculation core is pure Python and the face is QML, so an iOS app is a host
+port, not a rewrite. `SafeArea`, a long-press for settings, and `backend.isMobile`
+are already in the face. There is no PySide6 iOS wheel yet; the contract and the
+Xcode seed (bundle id, portrait lock, App Icon) live in
+[`docs/plans/apple-platforms.md`](docs/plans/apple-platforms.md) and
+[`packaging/ios/`](packaging/ios/).
 
 ## Test
 
 ```sh
 pytest                                          # the whole suite, headless
-.venv/Scripts/python.exe tools/verify_core.py   # + a 100% gate on the core
+python tools/verify_core.py                     # + a 100% gate on the core
 ```
 
 1513 tests, no display needed. The calculation core — number formatting, the

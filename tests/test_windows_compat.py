@@ -1,0 +1,155 @@
+"""Windows host contract — macOS work must not change these.
+
+The Linux job cannot prove this; the windows-latest pytest job is the real
+gate. These assertions pin the Windows paths in source so an Apple-only edit
+fails here before it ships.
+"""
+
+from __future__ import annotations
+
+import ctypes
+from pathlib import Path
+
+import pytest
+from PySide6.QtGui import QIcon
+
+from rpncalc import __main__ as entry
+from rpncalc import host, launchkey, systemtheme
+from rpncalc.backend import Backend
+from rpncalc.systemtheme import SystemTheme
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture
+def windows_host(monkeypatch):
+    monkeypatch.setattr(host, "is_windows", lambda: True)
+    monkeypatch.setattr(host, "is_macos", lambda: False)
+    monkeypatch.setattr(host, "is_ios", lambda: False)
+    monkeypatch.setattr(host, "is_linux", lambda: False)
+    monkeypatch.setattr(host, "is_mobile", lambda: False)
+    monkeypatch.setattr(host, "remembers_window_geometry", lambda: True)
+    monkeypatch.setattr(host, "has_pointer_hover", lambda: True)
+    monkeypatch.setattr(entry.host, "is_windows", lambda: True)
+    monkeypatch.setattr(entry.host, "is_macos", lambda: False)
+    monkeypatch.setattr(entry.host, "is_ios", lambda: False)
+    monkeypatch.setattr(entry.sys, "platform", "win32")
+
+
+def test_window_icon_is_ico_not_icns(windows_host):
+    path = entry._window_icon_path()
+    assert path is not None
+    assert path.name == "rpncalc.ico"
+    assert path.is_file()
+
+
+def test_ico_still_has_the_windows_taskbar_sizes(qt_app):
+    icon = QIcon(str(ROOT / "src/rpncalc/icons/rpncalc.ico"))
+    sizes = {s.width() for s in icon.availableSizes()}
+    assert {16, 32, 48, 256} <= sizes
+
+
+def test_taskbar_identity_claims_the_windows_app_id(windows_host, monkeypatch):
+    seen = {}
+
+    class FakeShell32:
+        def SetCurrentProcessExplicitAppUserModelID(self, value):
+            seen["id"] = value
+
+    class FakeWindll:
+        shell32 = FakeShell32()
+
+    monkeypatch.setattr(ctypes, "windll", FakeWindll(), raising=False)
+    entry._claim_taskbar_identity()
+    assert seen["id"] == "rpn-calc.rpncalc"
+
+
+def test_apple_presentation_is_a_noop_on_windows(windows_host, qt_app):
+    before = qt_app.quitOnLastWindowClosed()
+    qt_app.setQuitOnLastWindowClosed(not before)
+    flipped = qt_app.quitOnLastWindowClosed()
+    entry._apply_apple_presentation(qt_app)
+    assert qt_app.quitOnLastWindowClosed() is flipped
+    qt_app.setQuitOnLastWindowClosed(before)
+
+
+def test_backend_is_a_desktop_windows_host(windows_host, clean_settings):
+    backend = Backend()
+    assert backend.isMobile is False
+    assert backend.hasPointerHover is True
+    backend.saveWindowGeometry(100, 200, 420, 820, False)
+    geo = backend.windowGeometry()
+    assert geo["valid"] is True
+    assert (geo["x"], geo["y"], geo["width"], geo["height"]) == (100, 200, 420, 820)
+    assert geo["maximized"] is False
+
+
+def test_text_scale_uses_windows_logpixels(qt_app, monkeypatch):
+    monkeypatch.setattr(
+        systemtheme,
+        "_read_registry_dword",
+        lambda key, name: 120 if name == "LogPixels" else None,
+    )
+    theme = SystemTheme()
+    assert theme._detect_text_scale() == pytest.approx(1.25)
+
+
+def test_launchkey_stays_winreg_and_pythonw():
+    source = (ROOT / "src/rpncalc/launchkey.py").read_text(encoding="utf-8")
+    assert "import winreg" in source
+    assert "pythonw.exe" in source
+    assert "AppKey\\18" in source
+    if launchkey.supported():
+        assert host.is_windows()
+    else:
+        assert not host.is_windows()
+
+
+def test_qml_keeps_windows_ctrl_shortcuts_and_right_click():
+    qml = (ROOT / "src/rpncalc/qml/Main.qml").read_text(encoding="utf-8")
+    for seq in ("Ctrl+C", "Ctrl+V", "Ctrl+Z", "Ctrl+M", "Ctrl+Q", "Ctrl+,"):
+        assert seq in qml
+    assert "enabled: backend.calculatorKeySupported" in qml
+    assert "acceptedButtons: Qt.RightButton" in qml
+    assert "hoverEnabled: backend.hasPointerHover" in qml
+
+
+def test_pyinstaller_spec_still_builds_a_windows_exe():
+    spec = (ROOT / "packaging/rpncalc.spec").read_text(encoding="utf-8")
+    assert "rpncalc.ico" in spec
+    assert "version_info.txt" in spec
+    assert 'name = "rpncalc-debug" if DEBUG_BUILD else "rpncalc"' in spec
+    assert 'if sys.platform == "win32":' in spec
+    assert 'exe_kwargs["version"]' in spec
+    assert 'ONEDIR_BUILD = os.environ.get("RPNCALC_BUILD_ONEDIR") == "1" or MACOS' in spec
+    # A Windows build must not force a folder just because macOS needs one.
+    assert 'ONEDIR_BUILD = os.environ.get("RPNCALC_BUILD_ONEDIR") == "1" or MACOS or' not in spec
+    # The Windows icon is the fallback when this is not a Mac.
+    assert "elif ICON_ICO.is_file():" in spec
+
+
+def test_build_exe_windows_artifact_is_still_rpncalc_exe():
+    source = (ROOT / "tools/build_exe.py").read_text(encoding="utf-8")
+    assert 'DIST / f"{stem}.exe"' in source
+    assert "write_version_resource(version)" in source
+    assert 'if sys.platform == "win32":' in source
+    # macOS is a branch after the build; the Windows .exe path is the default.
+    assert 'app = DIST / "rpn-calc.app"' in source
+    darwin_bundle = source.index('app = DIST / "rpn-calc.app"')
+    exe_line = source.index('DIST / f"{stem}.exe"')
+    assert exe_line > darwin_bundle
+
+
+def test_release_workflow_still_uploads_the_windows_exe():
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "windows-latest" in workflow
+    assert "rpncalc.exe" in workflow
+    test_workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+    assert "windows-latest" in test_workflow
+
+
+def test_engine_layer_still_has_no_qt():
+    for name in ("numeric.py", "stack.py", "rpn_engine.py", "alg_engine.py", "keymap.py"):
+        text = (ROOT / "src/rpncalc" / name).read_text(encoding="utf-8")
+        assert "PySide" not in text
+        assert "from PySide" not in text

@@ -1,14 +1,16 @@
-"""Build the distributable Windows executable.
+"""Build the distributable desktop application.
 
-    .venv/Scripts/python.exe tools/build_exe.py
+    python tools/build_exe.py
 
-Writes `dist/rpncalc.exe`. Needs the build extra: `pip install -e ".[build]"`.
+Windows writes `dist/rpncalc.exe`. macOS writes `dist/rpn-calc.app`.
+Needs the build extra: `pip install -e ".[build]"`.
 
     --onedir   a folder build that starts in a fraction of the time
+               (macOS always produces a folder inside the .app)
     --debug    a console build that prints why it failed to start
 
-The version resource is generated here rather than committed, so it cannot
-drift from the version in pyproject.toml.
+The Windows version resource is generated here rather than committed, so
+it cannot drift from the version in pyproject.toml.
 """
 
 from __future__ import annotations
@@ -67,6 +69,38 @@ def write_version_resource(version: str) -> None:
     )
 
 
+def adhoc_sign(app: Path) -> None:
+    """Ad-hoc sign so `codesign -dv` succeeds and local `open` is less unhappy.
+
+    Notarization needs a Developer ID and is a release-secret step, not this.
+    `--deep` is what actually reaches the PyInstaller binaries inside the
+    bundle; without it Gatekeeper still sees unsigned Mach-O in Helpers/.
+    """
+    subprocess.run(
+        [
+            "codesign",
+            "--force",
+            "--deep",
+            "--sign", "-",
+            "--timestamp=none",
+            "--identifier", "io.github.rteoo.rpncalc",
+            str(app),
+        ],
+        check=True,
+    )
+
+
+def zip_app(app: Path) -> Path:
+    """Zip the bundle the way Finder does, preserving the .app package."""
+    archive = app.parent / f"{app.name}.zip"
+    archive.unlink(missing_ok=True)
+    subprocess.run(
+        ["ditto", "-c", "-k", "--keepParent", str(app), str(archive)],
+        check=True,
+    )
+    return archive
+
+
 def main() -> int:
     debug = "--debug" in sys.argv
     onedir = "--onedir" in sys.argv
@@ -81,13 +115,20 @@ def main() -> int:
         print('PyInstaller is missing. Run: pip install -e ".[build]"', file=sys.stderr)
         return 1
 
-    if not (ROOT / "src" / "rpncalc" / "icons" / "rpncalc.ico").exists():
+    icons = ROOT / "src" / "rpncalc" / "icons"
+    if sys.platform == "darwin":
+        if not (icons / "rpncalc.icns").exists():
+            print("Icon missing. Run: python tools/make_icon.py", file=sys.stderr)
+            return 1
+    elif not (icons / "rpncalc.ico").exists():
         print("Icon missing. Run: python tools/make_icon.py", file=sys.stderr)
         return 1
 
     version = project_version()
-    write_version_resource(version)
-    shape = "folder" if onedir else "one file"
+    os.environ["RPNCALC_VERSION"] = version
+    if sys.platform == "win32":
+        write_version_resource(version)
+    shape = "macOS app" if sys.platform == "darwin" else ("folder" if onedir else "one file")
     print(f"building rpn-calc {version} ({shape}{', debug console' if debug else ''})")
 
     # A stale build directory is the usual reason a change does not show up in
@@ -109,7 +150,29 @@ def main() -> int:
         return result.returncode
 
     stem = "rpncalc-debug" if debug else "rpncalc"
+    if sys.platform == "darwin":
+        app = DIST / "rpn-calc.app"
+        if not app.is_dir():
+            print("build reported success but produced no .app bundle", file=sys.stderr)
+            return 1
+        total = sum(f.stat().st_size for f in app.rglob("*") if f.is_file())
+        print(f"\n{app}  ({total / 1_048_576:.1f} MB)")
+        try:
+            adhoc_sign(app)
+            print("ad-hoc signed (not notarized; first-open is right-click → Open)")
+        except subprocess.CalledProcessError as error:
+            print(f"codesign failed: {error}", file=sys.stderr)
+            return 1
+        archive = zip_app(app)
+        print(f"{archive}  ({archive.stat().st_size / 1_048_576:.1f} MB)")
+        return 0
+
     exe = DIST / stem / f"{stem}.exe" if onedir else DIST / f"{stem}.exe"
+    if sys.platform != "win32":
+        # Linux (and anything else): the binary has no .exe suffix.
+        candidate = DIST / stem / stem if onedir else DIST / stem
+        if candidate.exists():
+            exe = candidate
     if not exe.exists():
         print("build reported success but produced no executable", file=sys.stderr)
         return 1

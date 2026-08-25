@@ -132,7 +132,7 @@ class TestBinding:
 
 
 class TestWithoutARegistry:
-    """The Linux side of the port, which must stay silent rather than crash."""
+    """Hosts without a registry, which must stay silent rather than crash."""
 
     @pytest.fixture(autouse=True)
     def no_winreg(self, monkeypatch):

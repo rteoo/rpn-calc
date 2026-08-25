@@ -1,6 +1,6 @@
 """Run the suite and hold the calculation core to full branch coverage.
 
-    .venv/Scripts/python.exe tools/verify_core.py
+    python tools/verify_core.py
 
 The core is the part that must not be wrong: the number formatting, the stack,
 and both engines. The Qt layer around it is checked by the test suite too, but

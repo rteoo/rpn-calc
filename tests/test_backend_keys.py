@@ -317,3 +317,25 @@ class TestInteractiveStack:
         for index in range(6):
             backend.pressMenu(index)
         assert backend.stackLines == before
+
+
+class TestMobileHost:
+    """iOS (and Android) have no window to remember and no calculator key."""
+
+    def test_desktop_is_not_mobile(self, backend):
+        from rpncalc import host
+
+        assert backend.isMobile is host.is_mobile()
+        assert backend.hasPointerHover is host.has_pointer_hover()
+
+    def test_geometry_is_not_saved_or_restored(self, monkeypatch, qt_app, clean_settings):
+        monkeypatch.setattr("rpncalc.backend.host.remembers_window_geometry", lambda: False)
+        monkeypatch.setattr("rpncalc.backend.host.is_mobile", lambda: True)
+        monkeypatch.setattr("rpncalc.backend.host.has_pointer_hover", lambda: False)
+        backend = Backend()
+        assert backend.isMobile is True
+        assert backend.hasPointerHover is False
+        assert backend.windowGeometry()["valid"] is False
+        backend.saveWindowGeometry(10, 20, 400, 800, True)
+        assert QSettings().value("window/geometry") is None
+        assert QSettings().value("window/maximized") is None

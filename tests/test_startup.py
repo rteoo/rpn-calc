@@ -66,10 +66,23 @@ class TestStart:
         icon = started.app.windowIcon()
         assert not icon.isNull()
 
-    def test_the_icon_carries_every_size_windows_asks_for(self, started):
+    def test_the_window_icon_carries_the_sizes_the_host_asks_for(self, started):
+        from rpncalc import host
+
         sizes = {size.width() for size in started.app.windowIcon().availableSizes()}
-        # 16/32/48 are the frames Explorer and a favicon reach for; 256 is the
-        # one the large-icon view uses.  A single-frame icon gets scaled to mud.
+        # A single-frame icon gets scaled to mud. Windows Explorer wants
+        # 16/32/48 plus 256 for the large-icon view. The Dock reads an
+        # .icns, which has no 48px type — 16/32/256/512 instead.
+        if host.is_macos():
+            assert {16, 32, 256, 512} <= sizes
+        else:
+            assert {16, 32, 48, 256} <= sizes
+
+    def test_the_ico_still_has_the_windows_frames(self):
+        # The window may wear .icns on a Mac, but the committed .ico is what
+        # Explorer and a favicon reach for and must not lose 48px.
+        icon = QIcon(str(entry._PACKAGE_DIR / "icons" / "rpncalc.ico"))
+        sizes = {size.width() for size in icon.availableSizes()}
         assert {16, 32, 48, 256} <= sizes
 
     def test_the_icon_ships_with_the_package(self):
@@ -81,6 +94,29 @@ class TestStart:
         for key in ("5", "enter", "3", "enter", "2", "+", "*"):
             started.backend.pressCommand(key)
         assert started.backend.stackLines == ["25"]
+
+    def test_option_s_is_square_root(self, started):
+        # On a Mac, Option is Qt.AltModifier. Matching event.key rather than
+        # event.text is what stops ß swallowing √ — this is that path.
+        from PySide6.QtCore import QEvent, QObject, Qt
+        from PySide6.QtGui import QKeyEvent
+
+        started.backend.pressCommand("9")
+        started.backend.pressCommand("enter")
+        face = started.window.findChild(QObject, "face")
+        assert face is not None
+        QGuiApplication.sendEvent(
+            face,
+            QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_S, Qt.KeyboardModifier.AltModifier, "s"),
+        )
+        started.app.processEvents()
+        assert started.backend.stackLines == ["3"]
+
+    def test_smoke_refuses_an_offscreen_window(self, clean_settings):
+        # A passing start() under QT_QPA_PLATFORM=offscreen is exactly what
+        # issue #15 says is not enough. This suite forces that plugin.
+        assert QGuiApplication.instance().platformName() == "offscreen"
+        assert entry.smoke() == 2
 
     def test_the_system_theme_reaches_the_backend(self, started):
         assert started.backend.darkMode == started.system_theme.darkMode()
@@ -147,8 +183,65 @@ class TestTaskbarIdentity:
     def test_it_is_a_no_op_off_windows(self, monkeypatch):
         # ctypes.windll does not exist anywhere else, so an unguarded call
         # would take the app down on launch rather than merely look wrong.
-        monkeypatch.setattr(entry.sys, "platform", "linux")
+        monkeypatch.setattr(entry.host, "is_windows", lambda: False)
         entry._claim_taskbar_identity()
+
+
+class TestApplePresentation:
+    def test_it_is_a_no_op_off_apple(self, monkeypatch, started):
+        monkeypatch.setattr(entry.host, "is_macos", lambda: False)
+        monkeypatch.setattr(entry.host, "is_ios", lambda: False)
+        entry._apply_apple_presentation(started.app)
+
+    def test_a_mac_quits_when_the_window_closes(self, monkeypatch, started):
+        monkeypatch.setattr(entry.host, "is_macos", lambda: True)
+        monkeypatch.setattr(entry.host, "is_ios", lambda: False)
+        started.app.setQuitOnLastWindowClosed(False)
+        entry._apply_apple_presentation(started.app)
+        assert started.app.quitOnLastWindowClosed() is True
+
+
+class TestWindowIconPath:
+    def test_windows_and_linux_prefer_the_ico(self, monkeypatch):
+        monkeypatch.setattr(entry.host, "is_ios", lambda: False)
+        monkeypatch.setattr(entry.host, "is_macos", lambda: False)
+        monkeypatch.setattr(entry.sys, "platform", "linux")
+        path = entry._window_icon_path()
+        assert path.name == "rpncalc.ico"
+        assert path.is_file()
+
+    def test_macos_prefers_icns_when_present(self, monkeypatch):
+        monkeypatch.setattr(entry.host, "is_ios", lambda: False)
+        monkeypatch.setattr(entry.host, "is_macos", lambda: True)
+        monkeypatch.setattr(entry.sys, "platform", "darwin")
+        path = entry._window_icon_path()
+        assert path.name == "rpncalc.icns"
+        assert path.is_file()
+
+    def test_ios_prefers_png(self, monkeypatch):
+        monkeypatch.setattr(entry.host, "is_ios", lambda: True)
+        monkeypatch.setattr(entry.host, "is_macos", lambda: False)
+        path = entry._window_icon_path()
+        assert path.name == "rpncalc.png"
+        assert path.is_file()
+
+    def test_falls_back_when_preferred_icons_are_missing(self, monkeypatch, tmp_path):
+        (tmp_path / "icons").mkdir()
+        monkeypatch.setattr(entry, "_PACKAGE_DIR", tmp_path)
+        monkeypatch.setattr(entry.host, "is_ios", lambda: False)
+        monkeypatch.setattr(entry.host, "is_macos", lambda: True)
+        monkeypatch.setattr(entry.sys, "platform", "darwin")
+        # None of the Apple candidates exist, so the Windows .ico name is what
+        # the caller still looks for - and a missing file is their problem,
+        # not a launch crash.
+        assert entry._window_icon_path() == tmp_path / "icons" / "rpncalc.ico"
+
+    def test_the_icns_ships_with_the_package(self):
+        icns = entry._PACKAGE_DIR / "icons" / "rpncalc.icns"
+        png = entry._PACKAGE_DIR / "icons" / "rpncalc-1024.png"
+        assert icns.is_file()
+        assert png.is_file()
+        assert icns.read_bytes()[:4] == b"icns"
 
 
 class TestResourceDir:

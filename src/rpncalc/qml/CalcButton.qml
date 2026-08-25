@@ -20,6 +20,7 @@ Item {
     property string alphaLabel
     property string armedShift: "none"
     property bool live: true
+    property bool hoverEnabled: true
     property color pageColor: "#101010"
     property color inkColor: "#eeeeee"
     property color rightShiftColor: "#e08a2e"
@@ -287,7 +288,7 @@ Item {
         MouseArea {
             id: hitArea
             anchors.fill: parent
-            hoverEnabled: true
+            hoverEnabled: control.hoverEnabled
             enabled: control.live
             onClicked: control.activated()
         }

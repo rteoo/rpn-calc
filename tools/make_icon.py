@@ -5,10 +5,13 @@ against their level markers, with level 1 - the answer - picked out in the
 faceplate's one warm colour. A calculator screen reads as a calculator at any
 size; the bare stack lines the icon used to be read as a list.
 
-The .ico it writes is committed, so a normal build needs no rendering step.
+The icons it writes are committed, so a normal build needs no rendering step.
 Run it only when the icon should change:
 
     python tools/make_icon.py
+
+Writes the Windows `.ico`, a 256px PNG, a macOS `.icns`, and the opaque 1024px
+PNG an iOS asset catalog needs.
 """
 
 from __future__ import annotations
@@ -33,8 +36,14 @@ from PySide6.QtGui import (
 
 ROOT = Path(__file__).resolve().parent.parent
 ICONS = ROOT / "src" / "rpncalc" / "icons"
+IOS_APPICON = (
+    ROOT / "packaging" / "ios" / "Assets.xcassets" / "AppIcon.appiconset"
+)
 ICO_TARGET = ICONS / "rpncalc.ico"
 PNG_TARGET = ICONS / "rpncalc.png"
+ICNS_TARGET = ICONS / "rpncalc.icns"
+IOS_PNG_TARGET = ICONS / "rpncalc-1024.png"
+IOS_APPICON_TARGET = IOS_APPICON / "AppIcon.png"
 
 # The right-shift orange from keymap.py, so the icon and the faceplate agree.
 ACCENT = QColor("#e08a2e")
@@ -48,18 +57,38 @@ LEVELS = ((0.30, 95), (0.55, 140), (0.41, 185))
 LEVELS_SMALL = ((0.44, 120), (0.62, 190))
 
 # The sizes Windows actually asks for.  16/32/48 double as the favicon frames.
-SIZES = (16, 24, 32, 48, 64, 128, 256)
+ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
+
+# icns type → pixel size.  Apple stores @2x variants as the doubled PNG;
+# the type tag is what tells the Dock the intended point size.
+ICNS_TYPES = (
+    ("icp4", 16),
+    ("icp5", 32),
+    ("icp6", 64),
+    ("ic07", 128),
+    ("ic08", 256),
+    ("ic09", 512),
+    ("ic10", 1024),
+    ("ic11", 32),   # 16@2x
+    ("ic12", 64),   # 32@2x
+    ("ic13", 256),  # 128@2x
+    ("ic14", 512),  # 256@2x
+)
 
 PNG_SIZE = 256
+IOS_SIZE = 1024
 
 
-def render(size: int) -> QImage:
+def render(size: int, *, opaque: bool = False) -> QImage:
     # Detail that survives at 32px and up; below that it is noise.
     detail = size >= 32
     glow = size >= 64
 
     image = QImage(size, size, QImage.Format_ARGB32)
-    image.fill(Qt.transparent)
+    # iOS App Store icons must not carry an alpha channel; fill the square
+    # with the slab's darkest stop so the rounded body sits on a matching
+    # field and iOS can apply its own mask.
+    image.fill(QColor("#0b0b0d") if opaque else Qt.transparent)
 
     painter = QPainter(image)
     painter.setRenderHint(QPainter.Antialiasing)
@@ -194,18 +223,50 @@ def build_ico(frames: dict[int, bytes]) -> bytes:
     return out.getvalue()
 
 
+def build_icns(frames: dict[str, bytes]) -> bytes:
+    """Assemble an .icns from PNG-encoded icon types.
+
+    Modern macOS reads PNG (or JPEG 2000) payloads; the container is a
+    big-endian list of (OSType, length, data) chunks. Length includes the
+    8-byte header, same as Apple's IconFamily format.
+    """
+    chunks = bytearray()
+    for ostype, payload in frames.items():
+        if len(ostype) != 4:
+            raise ValueError(f"icns type must be four characters, got {ostype!r}")
+        length = 8 + len(payload)
+        chunks.extend(ostype.encode("ascii"))
+        chunks.extend(struct.pack(">I", length))
+        chunks.extend(payload)
+    return b"icns" + struct.pack(">I", 8 + len(chunks)) + bytes(chunks)
+
+
 def main() -> int:
     QGuiApplication(sys.argv)  # QImage and QPainter need one
 
     ICONS.mkdir(parents=True, exist_ok=True)
+    IOS_APPICON.mkdir(parents=True, exist_ok=True)
 
-    frames = {size: encode_png(render(size)) for size in SIZES}
-    ICO_TARGET.write_bytes(build_ico(frames))
-    print(f"wrote {ICO_TARGET} ({ICO_TARGET.stat().st_size} bytes, {len(SIZES)} sizes)")
+    needed = set(ICO_SIZES) | {size for _, size in ICNS_TYPES} | {PNG_SIZE, IOS_SIZE}
+    cache: dict[int, bytes] = {}
+    for size in sorted(needed):
+        cache[size] = encode_png(render(size))
+
+    ICO_TARGET.write_bytes(build_ico({size: cache[size] for size in ICO_SIZES}))
+    print(f"wrote {ICO_TARGET} ({ICO_TARGET.stat().st_size} bytes, {len(ICO_SIZES)} sizes)")
 
     # The PNG is what a .desktop entry and the web want; .ico is Windows-only.
-    PNG_TARGET.write_bytes(frames[PNG_SIZE] if PNG_SIZE in frames else encode_png(render(PNG_SIZE)))
+    PNG_TARGET.write_bytes(cache[PNG_SIZE])
     print(f"wrote {PNG_TARGET} ({PNG_TARGET.stat().st_size} bytes, {PNG_SIZE}px)")
+
+    icns_frames = {ostype: cache[size] for ostype, size in ICNS_TYPES}
+    ICNS_TARGET.write_bytes(build_icns(icns_frames))
+    print(f"wrote {ICNS_TARGET} ({ICNS_TARGET.stat().st_size} bytes, {len(ICNS_TYPES)} types)")
+
+    ios_png = encode_png(render(IOS_SIZE, opaque=True))
+    IOS_PNG_TARGET.write_bytes(ios_png)
+    IOS_APPICON_TARGET.write_bytes(ios_png)
+    print(f"wrote {IOS_PNG_TARGET} and {IOS_APPICON_TARGET} ({IOS_SIZE}px, opaque)")
     return 0
 
 
