@@ -104,12 +104,12 @@ jobs:
         run: pytest -q
         env:
           QT_QPA_PLATFORM: offscreen
-      - name: Build .exe
+      - name: Build the Windows folder
         run: python tools/build_exe.py
       - uses: actions/upload-artifact@v4
         with:
-          name: rpncalc-exe
-          path: dist/rpncalc.exe
+          name: rpncalc-windows
+          path: dist/rpncalc-windows.zip
           if-no-files-found: error
 
   publish:
@@ -125,6 +125,6 @@ jobs:
         with:
           files: |
             artifacts/rpn-calc-macos/rpn-calc-macos.zip
-            artifacts/rpncalc-exe/rpncalc.exe
+            artifacts/rpncalc-windows/rpncalc-windows.zip
           generate_release_notes: true
           fail_on_unmatched_files: true

@@ -1,7 +1,7 @@
 # PyInstaller spec for the desktop builds.  Build with tools/build_exe.py.
 #
-# Windows: one file, no console.  macOS: an .app bundle (a folder build
-# inside, because one-file .app is what Gatekeeper fights).  PySide6 drags
+# Windows: a folder build, zipped, no console.  macOS: an .app bundle (a folder
+# build inside, because one-file .app is what Gatekeeper fights).  PySide6 drags
 # in the whole Qt distribution unless it is told otherwise, so the excludes
 # below are load-bearing: without them the payload carries WebEngine, 3D,
 # multimedia and charting for a calculator that draws seven rows of buttons.
@@ -56,13 +56,19 @@ datas = [
 # says what went wrong.
 DEBUG_BUILD = os.environ.get("RPNCALC_BUILD_DEBUG") == "1"
 
-# One file is what "a distributable .exe" means, but it pays for that shape on
-# every launch: the bootloader unpacks the whole 53 MB payload to a temporary
-# directory before Qt starts, about three seconds each time, and it never warms
-# up. A folder build starts in a fraction of that. RPNCALC_BUILD_ONEDIR=1
-# selects it. macOS always uses a folder build: that is what goes inside the
-# .app bundle.
-ONEDIR_BUILD = os.environ.get("RPNCALC_BUILD_ONEDIR") == "1" or MACOS
+# A folder build is the default everywhere, because one file pays for its shape
+# on every single launch.  The bootloader unpacks the whole payload to a fresh
+# temporary directory before Qt starts: measured on Windows, a median 3544 ms
+# to a mapped window against 727 ms for the folder.  It never warms up, and it
+# cannot - the unpack directory is new every time, so Qt's compiled-QML cache is
+# keyed to a path that no longer exists and every launch reparses the QML too.
+#
+# The folder ships zipped, which is what macOS already does with the .app, so a
+# release download is the same size either way.  RPNCALC_BUILD_ONEFILE=1 still
+# builds the single .exe for anyone who wants to hand someone one file; macOS
+# ignores it, because a folder is what goes inside the .app bundle.
+ONEFILE_BUILD = os.environ.get("RPNCALC_BUILD_ONEFILE") == "1" and not MACOS
+ONEDIR_BUILD = not ONEFILE_BUILD
 
 a = Analysis(
     [str(ROOT / "packaging" / "entry.py")],

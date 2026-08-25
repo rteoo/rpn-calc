@@ -121,29 +121,68 @@ def test_pyinstaller_spec_still_builds_a_windows_exe():
     assert 'name = "rpncalc-debug" if DEBUG_BUILD else "rpncalc"' in spec
     assert 'if sys.platform == "win32":' in spec
     assert 'exe_kwargs["version"]' in spec
-    assert 'ONEDIR_BUILD = os.environ.get("RPNCALC_BUILD_ONEDIR") == "1" or MACOS' in spec
-    # A Windows build must not force a folder just because macOS needs one.
-    assert 'ONEDIR_BUILD = os.environ.get("RPNCALC_BUILD_ONEDIR") == "1" or MACOS or' not in spec
     # The Windows icon is the fallback when this is not a Mac.
     assert "elif ICON_ICO.is_file():" in spec
 
 
-def test_build_exe_windows_artifact_is_still_rpncalc_exe():
+def test_pyinstaller_spec_defaults_to_the_folder_build():
+    """One file is opt-in, because it costs ~3 s on every launch.
+
+    The bootloader unpacks its payload to a new temporary directory each
+    time, so the folder build is what meets the startup budget - and what a
+    release ships, zipped, the way the .app already does.
+    """
+    spec = (ROOT / "packaging/rpncalc.spec").read_text(encoding="utf-8")
+    assert 'ONEFILE_BUILD = os.environ.get("RPNCALC_BUILD_ONEFILE") == "1" and not MACOS' in spec
+    assert "ONEDIR_BUILD = not ONEFILE_BUILD" in spec
+    # A Mac must not be able to select one file: a folder is what goes inside
+    # the .app bundle, and one-file .app is what Gatekeeper fights.
+    assert "and not MACOS" in spec
+
+
+def test_build_exe_windows_artifact_is_the_folder_and_its_zip():
     source = (ROOT / "tools/build_exe.py").read_text(encoding="utf-8")
     assert 'DIST / f"{stem}.exe"' in source
     assert "write_version_resource(version)" in source
     assert 'if sys.platform == "win32":' in source
-    # macOS is a branch after the build; the Windows .exe path is the default.
+    assert 'suffix = "windows" if sys.platform == "win32" else sys.platform' in source
+    assert 'zip_folder(exe.parent, f"{stem}-{suffix}")' in source
+    # macOS is a branch after the build; the Windows path is the default.
     assert 'app = DIST / ("rpn-calc-debug.app" if debug else "rpn-calc.app")' in source
     darwin_bundle = source.index("app = DIST / (\"rpn-calc-debug.app\"")
     exe_line = source.index('DIST / f"{stem}.exe"')
     assert exe_line > darwin_bundle
 
 
-def test_release_workflow_still_uploads_the_windows_exe():
+def test_zip_folder_keeps_the_folder_inside_the_archive(tmp_path):
+    """Unzipping must produce `rpncalc/`, not a hundred loose Qt DLLs."""
+    import zipfile
+    import sys as _sys
+
+    _sys.path.insert(0, str(ROOT / "tools"))
+    import build_exe
+
+    folder = tmp_path / "rpncalc"
+    (folder / "_internal").mkdir(parents=True)
+    (folder / "rpncalc.exe").write_bytes(b"MZ")
+    (folder / "_internal" / "Qt6Core.dll").write_bytes(b"dll")
+
+    archive = build_exe.zip_folder(folder, "rpncalc-windows")
+
+    assert archive.name == "rpncalc-windows.zip"
+    assert archive.parent == tmp_path
+    with zipfile.ZipFile(archive) as handle:
+        names = handle.namelist()
+    assert "rpncalc/rpncalc.exe" in names
+    assert "rpncalc/_internal/Qt6Core.dll" in names
+    assert all(name.startswith("rpncalc/") for name in names)
+
+
+def test_release_workflow_still_uploads_the_windows_build():
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     assert "windows-latest" in workflow
-    assert "rpncalc.exe" in workflow
+    assert "dist/rpncalc-windows.zip" in workflow
+    assert "artifacts/rpncalc-windows/rpncalc-windows.zip" in workflow
     test_workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
     assert "windows-latest" in test_workflow
 
