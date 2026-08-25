@@ -13,6 +13,16 @@ permissions:
 jobs:
   macos:
     runs-on: macos-latest
+    # Signing and notarization are opt-in: without the Developer ID secrets
+    # the bundle is ad-hoc signed and the tag still ships a zip, the way it
+    # did before they existed. `secrets` is not readable from a step `if`,
+    # so the guard reads them through env.
+    env:
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,10 +35,49 @@ jobs:
           QT_QPA_PLATFORM: offscreen
       - name: Smoke from source (cocoa)
         run: python tools/smoke_macos.py --source
+
+      - name: Import the Developer ID certificate
+        if: env.MACOS_CERTIFICATE != ''
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(openssl rand -base64 24)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 900 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" \
+            -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          # Without this codesign cannot reach the private key non-interactively.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$password" "$keychain" > /dev/null
+          # codesign searches the list, not the file, so the keychain has to join it.
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          # The identity string is read from the keychain rather than kept as a
+          # sixth secret, so it cannot drift from the certificate that is there.
+          # `|| true` because pipefail would abort the step on an empty grep,
+          # and the check below is the message worth reading.
+          identity="$(security find-identity -v -p codesigning "$keychain" \
+            | grep 'Developer ID Application' | head -n 1 \
+            | sed -E 's/.*"(.*)"/\1/' || true)"
+          if [ -z "$identity" ]; then
+            echo "no Developer ID Application identity in the imported certificate" >&2
+            exit 1
+          fi
+          echo "RPNCALC_CODESIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          echo "SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
       - name: Build .app
         run: python tools/build_exe.py
       - name: Smoke the bundle
         run: python tools/smoke_macos.py dist/rpn-calc.app
+
+      - name: Notarize and staple
+        if: env.MACOS_CERTIFICATE != '' && env.APPLE_ID != ''
+        run: python tools/notarize_macos.py dist/rpn-calc.app
+
       - name: Name the zip for the release
         run: mv dist/rpn-calc.app.zip dist/rpn-calc-macos.zip
       - uses: actions/upload-artifact@v4
@@ -36,6 +85,12 @@ jobs:
           name: rpn-calc-macos
           path: dist/rpn-calc-macos.zip
           if-no-files-found: error
+
+      - name: Forget the signing keychain
+        if: always() && env.SIGNING_KEYCHAIN != ''
+        run: |
+          security list-keychains -d user -s login.keychain
+          security delete-keychain "$SIGNING_KEYCHAIN" || true
 
   windows:
     runs-on: windows-latest
