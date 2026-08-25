@@ -8,6 +8,22 @@ Each version links to its release. 0.2.0 and 0.2.1 were bumped but never
 tagged, so their changes first reached users in 0.3.0; they link to the commit
 that carried them instead.
 
+## [Unreleased]
+
+### Changed
+
+- **Windows starts about five times faster.** The build defaults to a folder
+  instead of one file: median launch to a mapped window drops from **3544 ms
+  to 727 ms**, and pressing the keyboard's calculator key now opens the
+  calculator in about 0.7 s. One file paid its unpacking cost on every launch
+  and could never warm up — a fresh temporary directory each time also meant
+  Qt's compiled-QML cache never hit, so every launch reparsed the QML too.
+- **Windows releases ship `rpncalc-windows.zip`** instead of a bare
+  `rpncalc.exe`, mirroring the `rpn-calc.app.zip` macOS already shipped. The
+  download is the same size; unzip the folder and run `rpncalc.exe` inside it.
+  `python tools/build_exe.py --onefile` still builds the single `.exe` for
+  anyone who would rather hand someone one file than a folder.
+
 ## [0.3.0] - 2026-08-25
 
 ### Added
@@ -142,6 +158,7 @@ First release. An HP 50g-style RPN calculator wearing omacalc's face.
 - Errors never mutate the stack: `1 ENTER 0 ÷` reports `Infinite Result` with
   both operands still present.
 
+[Unreleased]: https://github.com/rteoo/rpn-calc/compare/v0.3.0...HEAD
 [0.3.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.3.0
 [0.2.1]: https://github.com/rteoo/rpn-calc/commit/53ddda1
 [0.2.0]: https://github.com/rteoo/rpn-calc/commit/f2ef050

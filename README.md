@@ -104,7 +104,7 @@ python tools/build_exe.py
 
 | Host | Output |
 |---|---|
-| Windows | `dist/rpncalc.exe` — one self-contained file, about 53 MB |
+| Windows | `dist/rpncalc/` and `dist/rpncalc-windows.zip` — about 56 MB zipped |
 | macOS | `dist/rpn-calc.app` and `dist/rpn-calc.app.zip` — ad-hoc signed |
 
 Set `RPNCALC_CODESIGN_IDENTITY` to a Developer ID to sign the bundle with
@@ -119,15 +119,18 @@ APPLE_ID=… APPLE_TEAM_ID=… APPLE_APP_PASSWORD=… python tools/notarize_maco
 Stapling rewrites `dist/rpn-calc.app.zip`, because the zip Apple received does
 not carry the ticket.
 
-`--onedir` trades shape for a ~1 s startup (macOS always uses a folder inside the
-`.app`). `--debug` produces a console build that prints why it failed to start,
-which a windowed build cannot.
+`--onefile` builds a single `.exe` instead, convenient to hand to someone but
+about 3.5 s to a window against 0.7 s for the folder: the bootloader unpacks
+its whole payload to a new temporary directory on every launch, so it never
+warms up. macOS ignores the flag - a folder is what goes inside the `.app`.
+`--debug` produces a console build that prints why it failed to start, which a
+windowed build cannot.
 
 On a Mac, `python tools/smoke_macos.py --source` opens the real cocoa window
 and quits; `python tools/smoke_macos.py dist/rpn-calc.app` does the same for
 the frozen bundle. Offscreen is refused — that is not a window.
 
-A tagged `v*` release attaches `rpncalc.exe` and `rpn-calc-macos.zip`. It
+A tagged `v*` release attaches `rpncalc-windows.zip` and `rpn-calc-macos.zip`. It
 notarizes the macOS bundle when the Apple secrets are configured on the
 repository, and falls back to an ad-hoc signature when they are not — in which
 case first-open is right-click → Open, and `xattr -cr dist/rpn-calc.app` is
