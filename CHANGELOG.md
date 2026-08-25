@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-08-24
+
+### Fixed
+
+- A stale `window/maximized` flag no longer reopens the calculator filling the
+  screen. The faceplate is a fixed proportion, so maximized is never restored;
+  the window opens at the fitted size instead.
+- The settings menu label, **Launch on the calculator key**, is no longer
+  clipped to `Launch on th…`. The popup is sized from the painted font and the
+  check indicator.
+
 ## [0.1.0] - 2026-08-24
 
 First release. An HP 50g-style RPN calculator wearing omacalc's face.
@@ -46,4 +57,5 @@ First release. An HP 50g-style RPN calculator wearing omacalc's face.
 - Errors never mutate the stack: `1 ENTER 0 ÷` reports `Infinite Result` with
   both operands still present.
 
+[0.1.1]: https://github.com/rteoo/rpn-calc/releases/tag/v0.1.1
 [0.1.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.1.0
