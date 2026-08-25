@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+Each version links to its release. 0.2.0 and 0.2.1 were bumped but never
+tagged, so their changes first reached users in 0.3.0; they link to the commit
+that carried them instead.
+
 ## [0.3.0] - 2026-08-25
 
 ### Added
@@ -139,8 +143,8 @@ First release. An HP 50g-style RPN calculator wearing omacalc's face.
   both operands still present.
 
 [0.3.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.3.0
-[0.2.1]: https://github.com/rteoo/rpn-calc/releases/tag/v0.2.1
-[0.2.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.2.0
+[0.2.1]: https://github.com/rteoo/rpn-calc/commit/53ddda1
+[0.2.0]: https://github.com/rteoo/rpn-calc/commit/f2ef050
 [0.1.2]: https://github.com/rteoo/rpn-calc/releases/tag/v0.1.2
 [0.1.1]: https://github.com/rteoo/rpn-calc/releases/tag/v0.1.1
 [0.1.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.1.0
