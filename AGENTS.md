@@ -147,15 +147,30 @@ nothing to outrank.
 macOS is a desktop host, same as Windows: `python -m rpncalc` from a venv, or
 `python tools/build_exe.py` for `dist/rpn-calc.app`. Dark mode follows
 `QGuiApplication.styleHints().colorScheme()`. Retina is Qt's logical pixels;
-do not multiply the window by `devicePixelRatio`. Command-key shortcuts are
-bound next to the Ctrl ones. The calculator-key toggle stays dimmed — there
+do not multiply the window by `devicePixelRatio`. **Command-key shortcuts need
+no binding of their own**: Qt maps `Ctrl` in a `QKeySequence` to ⌘ on macOS, so
+one `"Ctrl+Q"` is ⌘Q there and Ctrl+Q elsewhere. Adding the `Meta+` spelling
+binds the *physical* Control key on a Mac and Super on Linux, where the window
+manager already owns Super+Q. The calculator-key toggle stays dimmed — there
 is no `AppKey\18` on a Mac.
 
 `python -m rpncalc --smoke` (and `tools/smoke_macos.py`) must run on cocoa,
-not offscreen. The `macos-app` CI job builds, ad-hoc signs, smokes, and
-uploads `rpn-calc.app.zip`. Tagged `v*` releases attach that zip and the
-Windows `.exe`. Notarization is opt-in via Developer ID secrets; without
-them the zip still ships and first-open is right-click → Open.
+not offscreen. What it checks is **`isExposed()`, not `visible`** - `visible`
+is a literal in `Main.qml` and reads true for a window the compositor never
+mapped. The judging is split out of the measuring (`platform_verdict`,
+`window_verdict`, `SmokeReading`) so every branch of the gate is unit-tested
+off a Mac; a release gate that only ever runs on the release runner is not
+tested at all.
+
+The `macos-app` CI job builds, ad-hoc signs, smokes, and uploads
+`rpn-calc.app.zip`. A tagged `v*` release runs the suite on both hosts, builds
+in parallel, and attaches both artifacts from **one** publishing job - two jobs
+calling `action-gh-release` on the same tag race to create the release.
+Signing is inside out: nested `.dylib`/`.so`, frameworks as whole units, then
+the bundle. `--deep` is deprecated for signing and notarization will not take
+it. Notarization is opt-in via Developer ID secrets; the entitlements it needs
+are in `packaging/macos/rpncalc.entitlements`. Without them the zip still ships
+and first-open is right-click → Open.
 
 iOS is a host port, not a rewrite. The engines stay Python; the face stays
 QML (`SafeArea`, long-press, `backend.isMobile`). PySide6 has no iOS wheel,

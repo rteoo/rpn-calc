@@ -64,13 +64,10 @@ def test_taskbar_identity_claims_the_windows_app_id(windows_host, monkeypatch):
     assert seen["id"] == "rpn-calc.rpncalc"
 
 
-def test_apple_presentation_is_a_noop_on_windows(windows_host, qt_app):
-    before = qt_app.quitOnLastWindowClosed()
-    qt_app.setQuitOnLastWindowClosed(not before)
-    flipped = qt_app.quitOnLastWindowClosed()
-    entry._apply_apple_presentation(qt_app)
-    assert qt_app.quitOnLastWindowClosed() is flipped
-    qt_app.setQuitOnLastWindowClosed(before)
+def test_windows_quits_with_its_window_too(windows_host, qt_app):
+    # Not an Apple special case: nothing on any host may leave the process
+    # running after the only window closes.
+    assert qt_app.quitOnLastWindowClosed() is True
 
 
 def test_backend_is_a_desktop_windows_host(windows_host, clean_settings):
@@ -108,7 +105,10 @@ def test_launchkey_stays_winreg_and_pythonw():
 def test_qml_keeps_windows_ctrl_shortcuts_and_right_click():
     qml = (ROOT / "src/rpncalc/qml/Main.qml").read_text(encoding="utf-8")
     for seq in ("Ctrl+C", "Ctrl+V", "Ctrl+Z", "Ctrl+M", "Ctrl+Q", "Ctrl+,"):
-        assert seq in qml
+        assert f'sequence: "{seq}"' in qml
+    # Qt already maps Ctrl to Command on macOS. Binding Meta as well would
+    # claim Super+Q and Super+M here, which the window manager owns.
+    assert "Meta+" not in qml
     assert "enabled: backend.calculatorKeySupported" in qml
     assert "acceptedButtons: Qt.RightButton" in qml
     assert "hoverEnabled: backend.hasPointerHover" in qml
@@ -134,8 +134,8 @@ def test_build_exe_windows_artifact_is_still_rpncalc_exe():
     assert "write_version_resource(version)" in source
     assert 'if sys.platform == "win32":' in source
     # macOS is a branch after the build; the Windows .exe path is the default.
-    assert 'app = DIST / "rpn-calc.app"' in source
-    darwin_bundle = source.index('app = DIST / "rpn-calc.app"')
+    assert 'app = DIST / ("rpn-calc-debug.app" if debug else "rpn-calc.app")' in source
+    darwin_bundle = source.index("app = DIST / (\"rpn-calc-debug.app\"")
     exe_line = source.index('DIST / f"{stem}.exe"')
     assert exe_line > darwin_bundle
 

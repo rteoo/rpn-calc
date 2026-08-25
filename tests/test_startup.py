@@ -178,6 +178,14 @@ class TestMain:
         monkeypatch.setattr(type(started.app), "exec", lambda self: 7)
         assert main() == 7
 
+    def test_smoke_is_routed_and_the_flag_is_not_left_in_argv(self, monkeypatch):
+        seen = {}
+        monkeypatch.setattr(entry, "smoke", lambda: seen.setdefault("ran", True) and 0)
+        monkeypatch.setattr(entry.sys, "argv", ["rpncalc", "--smoke"])
+        assert main() == 0
+        # start() hands argv to QGuiApplication, which would reject the flag.
+        assert entry.sys.argv == ["rpncalc"]
+
 
 class TestTaskbarIdentity:
     def test_it_is_a_no_op_off_windows(self, monkeypatch):
@@ -187,18 +195,161 @@ class TestTaskbarIdentity:
         entry._claim_taskbar_identity()
 
 
-class TestApplePresentation:
-    def test_it_is_a_no_op_off_apple(self, monkeypatch, started):
-        monkeypatch.setattr(entry.host, "is_macos", lambda: False)
-        monkeypatch.setattr(entry.host, "is_ios", lambda: False)
-        entry._apply_apple_presentation(started.app)
+class TestQuitOnLastWindowClosed:
+    """Qt's default, which the smoke gate depends on and nothing may disturb.
 
-    def test_a_mac_quits_when_the_window_closes(self, monkeypatch, started):
-        monkeypatch.setattr(entry.host, "is_macos", lambda: True)
-        monkeypatch.setattr(entry.host, "is_ios", lambda: False)
-        started.app.setQuitOnLastWindowClosed(False)
-        entry._apply_apple_presentation(started.app)
+    A single-window utility that leaves a process behind after its window
+    closes has nowhere to live - a Dock icon with no menu bar on macOS, a
+    phantom taskbar entry on Windows.
+    """
+
+    def test_start_leaves_it_on(self, started):
         assert started.app.quitOnLastWindowClosed() is True
+
+
+def _reading(**overrides) -> entry.SmokeReading:
+    """A reading off a window that should pass, with fields to spoil."""
+    defaults = dict(
+        platform="cocoa",
+        title="rpn-calc",
+        width=420,
+        height=820,
+        exposed=True,
+        icon_sizes=(16, 32, 48, 256),
+        text_scale=1.0,
+        dark_mode=False,
+        quit_on_close=True,
+        calculator_key=False,
+        icon_name="rpncalc.icns",
+        room=(1920, 1080),
+        on_mac=True,
+    )
+    defaults.update(overrides)
+    return entry.SmokeReading(**defaults)
+
+
+class TestReadWindow:
+    def test_it_measures_the_window_it_was_given(self, started):
+        # Offscreen is refused by smoke() itself, but the measuring is the
+        # same code either way: this pins the drain loop and the field
+        # mapping so only the platform check is Mac-only.
+        reading = entry._read_window(started)
+        assert reading.title == "rpn-calc"
+        assert reading.width > 0 and reading.height > 0
+        assert reading.icon_sizes
+        assert reading.platform == "offscreen"
+        assert reading.room is not None
+
+
+class TestPlatformVerdict:
+    """`--smoke` exists to refuse the plugin the unit suite runs under."""
+
+    @pytest.mark.parametrize("name", ["offscreen", "minimal", "null"])
+    def test_a_windowless_plugin_is_refused(self, name):
+        code, reason = entry.platform_verdict(name, on_mac=False)
+        assert code == entry.SMOKE_WRONG_PLATFORM
+        assert "QT_QPA_PLATFORM" in reason
+
+    def test_a_mac_must_be_cocoa(self):
+        code, reason = entry.platform_verdict("xcb", on_mac=True)
+        assert code == entry.SMOKE_WRONG_PLATFORM
+        assert "cocoa" in reason
+
+    def test_cocoa_on_a_mac_passes(self):
+        assert entry.platform_verdict("cocoa", on_mac=True) == (entry.SMOKE_OK, "")
+
+    def test_xcb_off_a_mac_passes(self):
+        assert entry.platform_verdict("xcb", on_mac=False) == (entry.SMOKE_OK, "")
+
+
+class TestWindowVerdict:
+    """Every branch of the release gate, without needing a display.
+
+    The gate decides whether a tagged build ships. Exercising it only on a CI
+    Mac would mean the gate itself is never tested.
+    """
+
+    def test_a_good_window_passes(self):
+        assert entry.window_verdict(_reading()) == (entry.SMOKE_OK, "")
+
+    def test_a_window_the_compositor_never_mapped(self):
+        code, reason = entry.window_verdict(_reading(exposed=False))
+        assert code == entry.SMOKE_WRONG_WINDOW
+        assert "exposed" in reason
+
+    def test_the_wrong_title(self):
+        code, reason = entry.window_verdict(_reading(title="Python"))
+        assert code == entry.SMOKE_WRONG_WINDOW
+        assert "title" in reason
+
+    @pytest.mark.parametrize(
+        "size", [dict(width=200, height=390), dict(width=420, height=600)]
+    )
+    def test_smaller_than_the_faceplate(self, size):
+        code, reason = entry.window_verdict(_reading(**size))
+        assert code == entry.SMOKE_WRONG_WINDOW
+        assert "faceplate minimum" in reason
+
+    def test_a_window_that_fills_the_display(self):
+        # The bug this pins: the app opening maximized instead of at its
+        # design size, which is what issue #12 was.
+        code, reason = entry.window_verdict(
+            _reading(width=1920, height=1080, room=(1920, 1080))
+        )
+        assert code == entry.SMOKE_WRONG_WINDOW
+        assert "fills the display" in reason
+
+    def test_no_screen_reported_skips_the_display_check(self):
+        assert entry.window_verdict(_reading(room=None)) == (entry.SMOKE_OK, "")
+
+    def test_a_zero_height_window_is_caught_before_the_ratio_divides(self):
+        code, reason = entry.window_verdict(_reading(width=420, height=0))
+        assert code == entry.SMOKE_WRONG_WINDOW
+        assert "faceplate minimum" in reason
+
+    def test_the_face_proportion_is_held(self):
+        code, reason = entry.window_verdict(_reading(width=820, height=820))
+        assert code == entry.SMOKE_WRONG_WINDOW
+        assert "proportion" in reason
+
+    def test_a_little_stretch_is_allowed(self):
+        # Window managers round; the tolerance is there on purpose.
+        assert entry.window_verdict(_reading(width=430, height=820))[0] == entry.SMOKE_OK
+
+    def test_a_window_with_no_icon(self):
+        code, reason = entry.window_verdict(_reading(icon_sizes=()))
+        assert code == entry.SMOKE_WRONG_WINDOW
+        assert "icon" in reason
+
+    def test_retina_must_not_double_the_window(self):
+        code, reason = entry.window_verdict(_reading(text_scale=2.0))
+        assert code == entry.SMOKE_WRONG_WINDOW
+        assert "Retina" in reason
+
+    def test_text_scale_is_only_pinned_on_a_mac(self):
+        # Windows LogPixels/96 legitimately is not 1.0.
+        assert entry.window_verdict(_reading(on_mac=False, text_scale=1.5))[0] == entry.SMOKE_OK
+
+    def test_the_app_must_quit_with_its_window(self):
+        code, reason = entry.window_verdict(_reading(quit_on_close=False))
+        assert code == entry.SMOKE_WRONG_WINDOW
+        assert "quit" in reason
+
+    def test_the_calculator_key_is_a_windows_binding(self):
+        code, reason = entry.window_verdict(_reading(calculator_key=True))
+        assert code == entry.SMOKE_WRONG_WINDOW
+        assert "calculator key" in reason
+
+    def test_the_calculator_key_is_expected_off_a_mac(self):
+        assert entry.window_verdict(
+            _reading(on_mac=False, calculator_key=True, icon_name="rpncalc.ico")
+        )[0] == entry.SMOKE_OK
+
+    def test_the_reported_line_names_what_it_measured(self):
+        line = _reading().line()
+        assert line.startswith("SMOKE ")
+        for field in ("platform=", "exposed=", "width=", "height=", "icon="):
+            assert field in line
 
 
 class TestWindowIconPath:

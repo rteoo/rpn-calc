@@ -7,6 +7,9 @@ on:
 permissions:
   contents: write
 
+# Two jobs both calling action-gh-release on the same tag race to create the
+# release, and the loser fails the tag. The builds run in parallel; a single
+# job publishes what they produced.
 jobs:
   macos:
     runs-on: macos-latest
@@ -16,6 +19,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev,build]"
+      - name: Tests
+        run: pytest -q
+        env:
+          QT_QPA_PLATFORM: offscreen
       - name: Smoke from source (cocoa)
         run: python tools/smoke_macos.py --source
       - name: Build .app
@@ -24,11 +31,11 @@ jobs:
         run: python tools/smoke_macos.py dist/rpn-calc.app
       - name: Name the zip for the release
         run: mv dist/rpn-calc.app.zip dist/rpn-calc-macos.zip
-      - uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
         with:
-          files: dist/rpn-calc-macos.zip
-          generate_release_notes: true
-          fail_on_unmatched_files: true
+          name: rpn-calc-macos
+          path: dist/rpn-calc-macos.zip
+          if-no-files-found: error
 
   windows:
     runs-on: windows-latest
@@ -37,11 +44,32 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[build]"
+      - run: pip install -e ".[dev,build]"
+      - name: Tests
+        run: pytest -q
+        env:
+          QT_QPA_PLATFORM: offscreen
       - name: Build .exe
         run: python tools/build_exe.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpncalc-exe
+          path: dist/rpncalc.exe
+          if-no-files-found: error
+
+  publish:
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Show what will be attached
+        run: ls -R artifacts
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/rpncalc.exe
+          files: |
+            artifacts/rpn-calc-macos/rpn-calc-macos.zip
+            artifacts/rpncalc-exe/rpncalc.exe
           generate_release_notes: true
           fail_on_unmatched_files: true

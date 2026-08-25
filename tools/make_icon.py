@@ -43,6 +43,8 @@ ICO_TARGET = ICONS / "rpncalc.ico"
 PNG_TARGET = ICONS / "rpncalc.png"
 ICNS_TARGET = ICONS / "rpncalc.icns"
 IOS_PNG_TARGET = ICONS / "rpncalc-1024.png"
+# The same 1024px drawing twice on purpose: `setWindowIcon` reads the one in
+# the package, and an Xcode asset catalog will only read a file inside itself.
 IOS_APPICON_TARGET = IOS_APPICON / "AppIcon.png"
 
 # The right-shift orange from keymap.py, so the icon and the faceplate agree.

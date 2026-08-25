@@ -160,14 +160,16 @@ if ONEDIR_BUILD:
         name=name,
     )
     if MACOS:
+        # A debug build gets its own bundle so it cannot overwrite the
+        # release one sitting next to it in dist/.
         BUNDLE(
             coll,
-            name="rpn-calc.app",
+            name="rpn-calc-debug.app" if DEBUG_BUILD else "rpn-calc.app",
             icon=str(ICON_ICNS) if ICON_ICNS.is_file() else None,
             bundle_identifier="io.github.rteoo.rpncalc",
             info_plist={
-                "CFBundleName": "rpn-calc",
-                "CFBundleDisplayName": "rpn-calc",
+                "CFBundleName": "rpn-calc-debug" if DEBUG_BUILD else "rpn-calc",
+                "CFBundleDisplayName": "rpn-calc-debug" if DEBUG_BUILD else "rpn-calc",
                 "CFBundleIdentifier": "io.github.rteoo.rpncalc",
                 "CFBundleVersion": VERSION,
                 "CFBundleShortVersionString": VERSION,
