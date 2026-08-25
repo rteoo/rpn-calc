@@ -68,18 +68,6 @@ def _claim_taskbar_identity() -> None:
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("rpn-calc.rpncalc")
 
 
-def _apply_apple_presentation(app: QGuiApplication) -> None:
-    """Dock / home-indicator behaviour that only applies on Apple hosts.
-
-    A single-window utility should quit when its window closes. macOS would
-    otherwise keep a menuless process sitting in the Dock. iOS has nowhere
-    for that process to live either.
-    """
-    if not (host.is_macos() or host.is_ios()):
-        return
-    app.setQuitOnLastWindowClosed(True)
-
-
 @dataclass
 class Startup:
     """Everything `main` builds before handing control to the event loop.
@@ -113,7 +101,6 @@ def start(argv: list[str] | None = None) -> Startup:
     # One multi-resolution .ico serves the window, the taskbar and the frozen
     # executable's resource on Windows; macOS prefers the .icns next to it.
     _claim_taskbar_identity()
-    _apply_apple_presentation(app)
     app.setWindowIcon(QIcon(str(_window_icon_path())))
 
     QFontDatabase.addApplicationFont(str(_PACKAGE_DIR / "fonts" / "iAWriterMonoS-Regular.ttf"))
@@ -170,8 +157,7 @@ def start(argv: list[str] | None = None) -> Startup:
 
 
 def main() -> int:
-    smoke_mode = "--smoke" in sys.argv
-    if smoke_mode:
+    if "--smoke" in sys.argv:
         sys.argv = [arg for arg in sys.argv if arg != "--smoke"]
         return smoke()
     started = start()
@@ -180,107 +166,174 @@ def main() -> int:
     return started.app.exec()
 
 
+# `--smoke` exit codes. Distinct so CI can tell "you ran it under the wrong
+# plugin" from "the window that opened is not the faceplate".
+SMOKE_OK = 0
+SMOKE_NOT_LOADED = -1
+SMOKE_WRONG_PLATFORM = 2
+SMOKE_WRONG_WINDOW = 3
+
+# How long to spin the event queue waiting for the compositor to map the
+# window. Generous: a cold CI Mac is slower than a desktop, and the loop
+# stops the moment the window is exposed.
+_EXPOSE_TIMEOUT_MS = 3000
+
+
+def platform_verdict(platform: str, *, on_mac: bool) -> tuple[int, str]:
+    """Whether this Qt platform plugin can produce a real window.
+
+    Offscreen is refused: a passing `start()` under `QT_QPA_PLATFORM=offscreen`
+    is not evidence the app opens, which is the whole point of this path. On a
+    Mac it has to be cocoa specifically.
+    """
+    if platform in ("offscreen", "minimal", "null"):
+        return (
+            SMOKE_WRONG_PLATFORM,
+            f"platform {platform!r} is not a real window (unset QT_QPA_PLATFORM)",
+        )
+    if on_mac and platform != "cocoa":
+        return SMOKE_WRONG_PLATFORM, f"expected cocoa on macOS, got {platform!r}"
+    return SMOKE_OK, ""
+
+
+@dataclass(frozen=True)
+class SmokeReading:
+    """What the window that opened actually is.
+
+    Plain data, read off the live window and then judged separately, so every
+    branch of `window_verdict` can be tested without a display. The checks are
+    what a release depends on; testing them only on a CI Mac would mean the
+    gate itself is never exercised.
+    """
+
+    platform: str
+    title: str
+    width: int
+    height: int
+    exposed: bool
+    icon_sizes: tuple[int, ...]
+    text_scale: float
+    dark_mode: bool
+    quit_on_close: bool
+    calculator_key: bool
+    icon_name: str
+    # The screen's available geometry, or None where Qt reports no screen.
+    room: tuple[int, int] | None
+    on_mac: bool
+
+    def line(self) -> str:
+        return (
+            f"SMOKE platform={self.platform} exposed={self.exposed} "
+            f"title={self.title!r} width={self.width} height={self.height} "
+            f"textScale={self.text_scale} darkMode={self.dark_mode} "
+            f"quitOnClose={self.quit_on_close} icon={self.icon_name} "
+            f"calculatorKey={self.calculator_key} "
+            f"iconSizes={list(self.icon_sizes)}"
+        )
+
+
+# The faceplate is drawn at 420x820 and the window keeps that shape.
+_FACE_RATIO = 420 / 820
+_FACE_RATIO_TOLERANCE = 0.05
+_FACE_MIN_WIDTH = 330
+_FACE_MIN_HEIGHT = 640
+
+
+def window_verdict(reading: SmokeReading) -> tuple[int, str]:
+    """Whether the window that opened is the calculator."""
+    # Exposure, not `visible`: `visible` is a literal in Main.qml and would
+    # read true for a window the compositor never mapped. Being exposed is
+    # the platform saying it put pixels somewhere.
+    if not reading.exposed:
+        return SMOKE_WRONG_WINDOW, "window was never exposed by the compositor"
+    if reading.title != "rpn-calc":
+        return SMOKE_WRONG_WINDOW, f"unexpected title {reading.title!r}"
+    if reading.width < _FACE_MIN_WIDTH or reading.height < _FACE_MIN_HEIGHT:
+        return SMOKE_WRONG_WINDOW, "window smaller than the faceplate minimum"
+    if reading.room is not None:
+        room_width, room_height = reading.room
+        if reading.width >= room_width or reading.height >= room_height:
+            return SMOKE_WRONG_WINDOW, "window fills the display"
+    # Safe to divide: the minimum height above has already rejected zero.
+    ratio = reading.width / reading.height
+    if abs(ratio - _FACE_RATIO) > _FACE_RATIO_TOLERANCE:
+        return SMOKE_WRONG_WINDOW, "window lost the 420x820 face proportion"
+    if not reading.icon_sizes:
+        return SMOKE_WRONG_WINDOW, "no window icon"
+    if reading.on_mac and reading.text_scale != 1.0:
+        return SMOKE_WRONG_WINDOW, "Retina must not double the window"
+    if not reading.quit_on_close:
+        # Qt's default, pinned here: a single-window utility that leaves a
+        # process behind after its window closes has nowhere to live.
+        return SMOKE_WRONG_WINDOW, "closing the window must quit the app"
+    if reading.on_mac and reading.calculator_key:
+        return SMOKE_WRONG_WINDOW, "the calculator key is a Windows binding"
+    return SMOKE_OK, ""
+
+
+def _read_window(started: Startup) -> SmokeReading:
+    """Drain the event queue until the window is mapped, then measure it."""
+    from PySide6.QtCore import QElapsedTimer
+
+    window = started.window
+    timer = QElapsedTimer()
+    timer.start()
+    while not window.isExposed() and timer.elapsed() < _EXPOSE_TIMEOUT_MS:
+        started.app.processEvents()
+
+    screen = started.app.primaryScreen()
+    room = None
+    if screen is not None:
+        available = screen.availableGeometry()
+        room = (available.width(), available.height())
+
+    icon = started.app.windowIcon()
+    return SmokeReading(
+        platform=started.app.platformName(),
+        title=str(window.property("title") or ""),
+        width=int(window.property("width") or 0),
+        height=int(window.property("height") or 0),
+        exposed=bool(window.isExposed()),
+        icon_sizes=tuple(sorted(size.width() for size in icon.availableSizes())),
+        text_scale=float(started.backend.textScale),
+        dark_mode=bool(started.backend.darkMode),
+        quit_on_close=bool(started.app.quitOnLastWindowClosed()),
+        calculator_key=bool(started.backend.calculatorKeySupported),
+        icon_name=_window_icon_path().name,
+        room=room,
+        on_mac=host.is_macos(),
+    )
+
+
 def smoke() -> int:
     """Open the real window, report what it is, and quit.
 
-    Offscreen is refused: a passing `start()` under `QT_QPA_PLATFORM=offscreen`
-    is not evidence the app opens, which is the whole point of this path.
-    On a Mac this must be cocoa. Drains a few events so the platform maps a
-    native window, then closes it — no event loop, so CI cannot hang here.
+    No event loop, so CI cannot hang here: the wait for the window to be
+    mapped is bounded, and the window is closed on every path out.
     """
     started = start()
     if not started.loaded or started.window is None:
         print("SMOKE_FAIL: the interface did not load", file=sys.stderr)
-        return -1
+        return SMOKE_NOT_LOADED
 
-    platform = started.app.platformName()
-    if platform in ("offscreen", "minimal", "null"):
-        print(
-            f"SMOKE_FAIL: platform {platform!r} is not a real window "
-            "(unset QT_QPA_PLATFORM)",
-            file=sys.stderr,
-        )
-        return 2
-    if sys.platform == "darwin" and platform != "cocoa":
-        print(f"SMOKE_FAIL: expected cocoa on macOS, got {platform!r}", file=sys.stderr)
-        return 2
-
-    from PySide6.QtCore import QElapsedTimer
-
-    timer = QElapsedTimer()
-    timer.start()
-    while timer.elapsed() < 400:
-        started.app.processEvents()
-
-    window = started.window
-    width = int(window.property("width") or 0)
-    height = int(window.property("height") or 0)
-    visible = bool(window.property("visible"))
-    title = str(window.property("title") or "")
-    icon_sizes = {size.width() for size in started.app.windowIcon().availableSizes()}
-    native = int(window.winId()) != 0
-    text_scale = float(started.backend.textScale)
-    dark_mode = bool(started.backend.darkMode)
-    quit_on_close = bool(started.app.quitOnLastWindowClosed())
-    calculator_key = bool(started.backend.calculatorKeySupported)
-    icon_name = _window_icon_path().name
-
-    report = (
-        f"SMOKE platform={platform} visible={visible} title={title!r} "
-        f"width={width} height={height} native={native} "
-        f"textScale={text_scale} darkMode={dark_mode} "
-        f"quitOnClose={quit_on_close} icon={icon_name} "
-        f"calculatorKey={calculator_key} iconSizes={sorted(icon_sizes)}"
+    code, reason = platform_verdict(
+        started.app.platformName(), on_mac=host.is_macos()
     )
-    print(report)
+    if code != SMOKE_OK:
+        print(f"SMOKE_FAIL: {reason}", file=sys.stderr)
+        return code
 
-    if not visible:
-        print("SMOKE_FAIL: window is not visible", file=sys.stderr)
-        window.close()
-        return 3
-    if title != "rpn-calc":
-        print(f"SMOKE_FAIL: unexpected title {title!r}", file=sys.stderr)
-        window.close()
-        return 3
-    if width < 330 or height < 640:
-        print("SMOKE_FAIL: window smaller than the faceplate minimum", file=sys.stderr)
-        window.close()
-        return 3
-    screen = started.app.primaryScreen()
-    if screen is not None:
-        room = screen.availableGeometry()
-        if width >= room.width() or height >= room.height():
-            print("SMOKE_FAIL: window fills the display", file=sys.stderr)
-            window.close()
-            return 3
-    if abs(width / height - 420 / 820) > 0.05:
-        print("SMOKE_FAIL: window lost the 420×820 face proportion", file=sys.stderr)
-        window.close()
-        return 3
-    if started.app.windowIcon().isNull():
-        print("SMOKE_FAIL: no window icon", file=sys.stderr)
-        window.close()
-        return 3
-    if host.is_macos() and text_scale != 1.0:
-        print("SMOKE_FAIL: Retina must not double the window", file=sys.stderr)
-        window.close()
-        return 3
-    if host.is_macos() and not quit_on_close:
-        print("SMOKE_FAIL: closing the window must quit on macOS", file=sys.stderr)
-        window.close()
-        return 3
-    if host.is_macos() and calculator_key:
-        print("SMOKE_FAIL: the calculator key is a Windows binding", file=sys.stderr)
-        window.close()
-        return 3
-    if not native:
-        print("SMOKE_FAIL: no native window handle", file=sys.stderr)
-        window.close()
-        return 3
+    reading = _read_window(started)
+    print(reading.line())
 
-    window.close()
+    code, reason = window_verdict(reading)
+    started.window.close()
+    if code != SMOKE_OK:
+        print(f"SMOKE_FAIL: {reason}", file=sys.stderr)
+        return code
+
     print("SMOKE_OK")
-    return 0
+    return SMOKE_OK
 
 
 if __name__ == "__main__":

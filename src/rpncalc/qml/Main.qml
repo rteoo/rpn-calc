@@ -52,38 +52,43 @@ ApplicationWindow {
     Material.accent: backend.themeAccent
     color: pageColor
 
+    // Qt maps Ctrl in a key sequence to Command on macOS by default, so one
+    // "Ctrl+..." binding is ⌘ there and Ctrl everywhere else. Spelling the
+    // Meta variant out as well would bind the *physical* Control key on a Mac
+    // and the Super key on Linux, where the window manager has already
+    // claimed Super+Q.
     Shortcut {
-        sequences: ["Ctrl+C", "Meta+C"]
+        sequence: "Ctrl+C"
         context: Qt.ApplicationShortcut
         onActivated: backend.copyResult()
     }
 
     Shortcut {
-        sequences: ["Ctrl+V", "Meta+V"]
+        sequence: "Ctrl+V"
         context: Qt.ApplicationShortcut
         onActivated: backend.pasteNumber()
     }
 
     Shortcut {
-        sequences: ["Ctrl+Z", "Meta+Z"]
+        sequence: "Ctrl+Z"
         context: Qt.ApplicationShortcut
         onActivated: backend.pressCommand("undo")
     }
 
     Shortcut {
-        sequences: ["Ctrl+M", "Meta+M"]
+        sequence: "Ctrl+M"
         context: Qt.ApplicationShortcut
         onActivated: backend.toggleEntryMode()
     }
 
     Shortcut {
-        sequences: ["Ctrl+Q", "Meta+Q"]
+        sequence: "Ctrl+Q"
         context: Qt.ApplicationShortcut
         onActivated: win.close()
     }
 
     Shortcut {
-        sequences: ["Ctrl+,", "Meta+,"]
+        sequence: "Ctrl+,"
         context: Qt.ApplicationShortcut
         onActivated: settingsMenu.popup()
     }
@@ -151,12 +156,17 @@ ApplicationWindow {
 
         // The physical keyboard drives commands directly rather than pretending
         // to press keycaps: shift planes are reached with Alt (left) and
-        // Ctrl+Alt (right), which no keycap can express. On macOS, Option is
-        // Alt and Command is Meta — match the physical key, not the composed
-        // character, or Option+S becomes ß and never reaches sqrt.
+        // Ctrl+Alt (right), which no keycap can express. On macOS Option is
+        // Alt — match the physical key, not the composed character, or
+        // Option+S becomes ß and never reaches sqrt.
         Keys.onPressed: function(event) {
             if (event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)) {
-                return;  // reserved for the Shortcuts above (Ctrl on Windows, ⌘ on macOS)
+                // ControlModifier is Ctrl on Windows and Linux and ⌘ on macOS
+                // (Qt swaps them); those belong to the Shortcuts above. Meta
+                // is the physical Control on a Mac and Super elsewhere, bound
+                // to nothing here - swallow it rather than type a digit under
+                // a window-manager chord.
+                return;
             }
 
             var command = "";

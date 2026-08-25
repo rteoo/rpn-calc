@@ -16,6 +16,7 @@ it cannot drift from the version in pyproject.toml.
 from __future__ import annotations
 
 import os
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -69,18 +70,68 @@ def write_version_resource(version: str) -> None:
     )
 
 
-def adhoc_sign(app: Path) -> None:
-    """Ad-hoc sign so `codesign -dv` succeeds and local `open` is less unhappy.
+# Mach-O by extension. PyInstaller lays the Qt libraries and the extension
+# modules out beside the executable; every one of them is code and has to
+# carry its own signature.
+NESTED_CODE_SUFFIXES = (".dylib", ".so")
 
-    Notarization needs a Developer ID and is a release-secret step, not this.
-    `--deep` is what actually reaches the PyInstaller binaries inside the
-    bundle; without it Gatekeeper still sees unsigned Mach-O in Helpers/.
+
+def nested_code(app: Path) -> list[Path]:
+    """Everything inside the bundle that has to be signed before the bundle is.
+
+    Deepest first: a signature covers the contents of what it seals, so a
+    framework signed after its parent invalidates the parent. This is what
+    `--deep` used to paper over - Apple deprecated it for signing, and a
+    notarized build has to do the walk properly anyway.
     """
+    contents = app / "Contents"
+    found: set[Path] = set()
+    for path in contents.rglob("*"):
+        if path.is_symlink() or not path.is_file():
+            continue
+        if path.suffix in NESTED_CODE_SUFFIXES:
+            found.add(path)
+    # Bundled frameworks are sealed as a unit, not file by file.
+    for framework in contents.rglob("*.framework"):
+        if framework.is_dir():
+            found = {p for p in found if framework not in p.parents}
+            found.add(framework)
+    # The helper binaries in Contents/MacOS have no suffix to recognise them
+    # by; the main executable is signed last, with the bundle.
+    macos = contents / "MacOS"
+    if macos.is_dir():
+        for path in macos.iterdir():
+            if path.is_file() and not path.is_symlink() and path.suffix == "":
+                found.add(path)
+    return sorted(found, key=lambda p: (-len(p.parts), str(p)))
+
+
+def bundle_executable(app: Path) -> str:
+    """The CFBundleExecutable name, which a debug build changes."""
+    with (app / "Contents" / "Info.plist").open("rb") as handle:
+        return str(plistlib.load(handle)["CFBundleExecutable"])
+
+
+def adhoc_sign(app: Path) -> None:
+    """Ad-hoc sign, inside out, so `codesign -dv` succeeds on the bundle.
+
+    Notarization needs a Developer ID and is a release-secret step, not this;
+    when it lands it wants Hardened Runtime and the entitlements already in
+    `packaging/macos/rpncalc.entitlements` added to the outer signature. The
+    ordering below is the part that has to be right either way.
+    """
+    main_executable = app / "Contents" / "MacOS" / bundle_executable(app)
+    for target in nested_code(app):
+        if target == main_executable:
+            continue
+        subprocess.run(
+            ["codesign", "--force", "--sign", "-", "--timestamp=none", str(target)],
+            check=True,
+        )
     subprocess.run(
         [
             "codesign",
             "--force",
-            "--deep",
             "--sign", "-",
             "--timestamp=none",
             "--identifier", "io.github.rteoo.rpncalc",
@@ -151,7 +202,7 @@ def main() -> int:
 
     stem = "rpncalc-debug" if debug else "rpncalc"
     if sys.platform == "darwin":
-        app = DIST / "rpn-calc.app"
+        app = DIST / ("rpn-calc-debug.app" if debug else "rpn-calc.app")
         if not app.is_dir():
             print("build reported success but produced no .app bundle", file=sys.stderr)
             return 1

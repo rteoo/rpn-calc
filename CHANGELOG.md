@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **`--smoke` judges what it measured.** The window reading is a
+  `SmokeReading` dataclass and the verdict is two pure functions
+  (`platform_verdict`, `window_verdict`), so every branch of the release gate
+  is tested off a Mac instead of only on the release runner.
+- **macOS signing is inside out** - nested `.dylib`/`.so` first, frameworks as
+  whole units, then the bundle. `--deep` is deprecated for signing and a
+  notarized build cannot use it.
+- **A tagged release publishes from one job.** The macOS and Windows builds run
+  in parallel and upload artifacts; a single `publish` job attaches both. Two
+  jobs calling `action-gh-release` on the same tag raced to create the release.
+  Both build jobs now run the test suite, so a tag cannot ship a red suite.
+
+### Fixed
+
+- **`Meta+` shortcut duplicates removed.** Qt already maps `Ctrl` in a key
+  sequence to ⌘ on macOS, so `⌘Q` was never missing; the `Meta+` spelling
+  bound the physical Control key on a Mac and claimed Super+Q, Super+M and
+  Super+Z on Linux, where the window manager owns them.
+- **`--smoke` checks `isExposed()` rather than `visible` and `winId()`.**
+  `visible` is a literal in `Main.qml` and `winId()` creates the handle it was
+  asked to test, so neither check could ever fail.
+- **`quitOnLastWindowClosed` is no longer set as an Apple special case.** It is
+  Qt's default on every host; `_apply_apple_presentation` set it to the value
+  it already had. The invariant is pinned by a test and by `--smoke` instead.
+- A `--debug` build on macOS writes `dist/rpn-calc-debug.app` instead of
+  overwriting the release bundle beside it.
+
 ## [0.2.0] - 2026-08-25
 
 ### Added
@@ -11,9 +42,10 @@ All notable changes to this project are documented here. The format follows
 - **macOS as a desktop host.** Run from source with the same venv as Linux;
   `python tools/build_exe.py` on a Mac writes `dist/rpn-calc.app` with bundle
   id `io.github.rteoo.rpncalc`, a Retina `.icns`, and Dark Mode following
-  the system. Command-key shortcuts (`⌘C` `⌘V` `⌘Z` `⌘M` `⌘Q` `⌘,`) sit next
-  to the existing Ctrl bindings. Option+letter scientific shortcuts match
-  the physical key, so a German layout's ß does not swallow `√`.
+  the system. Command-key shortcuts (`⌘C` `⌘V` `⌘Z` `⌘M` `⌘Q` `⌘,`) work,
+  which the existing Ctrl bindings already provide - Qt maps `Ctrl` in a key
+  sequence to ⌘ on macOS. Option+letter scientific shortcuts match the
+  physical key, so a German layout's ß does not swallow `√`.
 - **iOS-ready face and host seam.** `SafeArea` insets the notch; a long-press
   on the display opens the settings a right-click opens on the desktop;
   `backend.isMobile` fills the screen and skips window-geometry restore.
@@ -92,6 +124,7 @@ First release. An HP 50g-style RPN calculator wearing omacalc's face.
 - Errors never mutate the stack: `1 ENTER 0 ÷` reports `Infinite Result` with
   both operands still present.
 
+[Unreleased]: https://github.com/rteoo/rpn-calc/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.2.0
 [0.1.2]: https://github.com/rteoo/rpn-calc/releases/tag/v0.1.2
 [0.1.1]: https://github.com/rteoo/rpn-calc/releases/tag/v0.1.1
