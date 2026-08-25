@@ -27,10 +27,17 @@ is followed (`NSRequiresAquaSystemAppearance` is false), and Command-key
 shortcuts (`⌘C` `⌘V` `⌘Z` `⌘M` `⌘Q` `⌘,`) match the Windows Ctrl bindings.
 
 The Dock icon is `src/rpncalc/icons/rpncalc.icns`. `tools/build_exe.py`
-ad-hoc signs the bundle. Gatekeeper still quarantines downloads that are not
-notarized; first-open is right-click → Open, and `xattr -cr dist/rpn-calc.app`
-is the local escape. Notarization needs a Developer ID in the release
-workflow secrets — without them a tagged `v*` still attaches the zip.
+ad-hoc signs the bundle unless `RPNCALC_CODESIGN_IDENTITY` names a Developer
+ID, which also turns on Hardened Runtime and
+`packaging/macos/rpncalc.entitlements`. `tools/notarize_macos.py` then submits
+the zip to `notarytool --wait`, staples the ticket to the `.app`, and re-zips —
+Apple notarizes the archive, but Gatekeeper reads the ticket off the bundle.
+
+The release workflow does both when `MACOS_CERTIFICATE`,
+`MACOS_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID` and
+`APPLE_APP_PASSWORD` are set, and skips both when they are not: a tagged `v*`
+still attaches an ad-hoc zip whose first-open is right-click → Open, with
+`xattr -cr dist/rpn-calc.app` as the local escape.
 
 `python tools/smoke_macos.py --source` and `python tools/smoke_macos.py dist/rpn-calc.app`
 open a real cocoa window (`--smoke` refuses `QT_QPA_PLATFORM=offscreen`) and

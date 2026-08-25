@@ -10,9 +10,9 @@ under `MODE`. The keyboard is the 50g's lower block, shift planes and all.
 
 A built Windows executable and a macOS `.app` zip ship with each
 [release](https://github.com/rteoo/rpn-calc/releases/latest). No Python
-installation needed. The macOS zip is ad-hoc signed; Gatekeeper's first-open
-is right-click → Open until a Developer ID notarizes it. To run from source
-on any desktop, install it.
+installation needed. A macOS zip built without an Apple Developer ID is ad-hoc
+signed, and Gatekeeper's first-open is then right-click → Open; a notarized
+one opens with a double-click. To run from source on any desktop, install it.
 
 ## Install
 
@@ -107,6 +107,18 @@ python tools/build_exe.py
 | Windows | `dist/rpncalc.exe` — one self-contained file, about 53 MB |
 | macOS | `dist/rpn-calc.app` and `dist/rpn-calc.app.zip` — ad-hoc signed |
 
+Set `RPNCALC_CODESIGN_IDENTITY` to a Developer ID to sign the bundle with
+Hardened Runtime instead, then notarize and staple it:
+
+```sh
+RPNCALC_CODESIGN_IDENTITY="Developer ID Application: … (TEAMID)" python tools/build_exe.py
+APPLE_ID=… APPLE_TEAM_ID=… APPLE_APP_PASSWORD=… python tools/notarize_macos.py dist/rpn-calc.app
+```
+
+`APPLE_APP_PASSWORD` is an app-specific password, not the account password.
+Stapling rewrites `dist/rpn-calc.app.zip`, because the zip Apple received does
+not carry the ticket.
+
 `--onedir` trades shape for a ~1 s startup (macOS always uses a folder inside the
 `.app`). `--debug` produces a console build that prints why it failed to start,
 which a windowed build cannot.
@@ -115,9 +127,11 @@ On a Mac, `python tools/smoke_macos.py --source` opens the real cocoa window
 and quits; `python tools/smoke_macos.py dist/rpn-calc.app` does the same for
 the frozen bundle. Offscreen is refused — that is not a window.
 
-A tagged `v*` release attaches `rpncalc.exe` and `rpn-calc-macos.zip`. The
-macOS zip is ad-hoc signed; first-open is right-click → Open until a Developer
-ID notarizes it. `xattr -cr dist/rpn-calc.app` is the local escape.
+A tagged `v*` release attaches `rpncalc.exe` and `rpn-calc-macos.zip`. It
+notarizes the macOS bundle when the Apple secrets are configured on the
+repository, and falls back to an ad-hoc signature when they are not — in which
+case first-open is right-click → Open, and `xattr -cr dist/rpn-calc.app` is
+the local escape.
 
 The icon is committed at `src/rpncalc/icons/` — inside the package, because the
 app sets it as its own window icon at startup, not only as the executable's
@@ -126,9 +140,11 @@ resource. `rpncalc.ico` covers Windows; `rpncalc.icns` covers the Dock;
 `rpncalc-1024.png` is the opaque App Store icon. Regenerate all of them with
 `python tools/make_icon.py` only if the icon should change.
 
-An unsigned macOS `.app` is quarantined by Gatekeeper. On the machine that
-built it, `xattr -cr dist/rpn-calc.app` clears that. CI ad-hoc signs the
-bundle; notarization is a Developer ID secret on the release workflow.
+An un-notarized macOS `.app` is quarantined by Gatekeeper. On the machine that
+built it, `xattr -cr dist/rpn-calc.app` clears that. The release workflow
+notarizes when `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PASSWORD`, `APPLE_ID`,
+`APPLE_TEAM_ID` and `APPLE_APP_PASSWORD` are set as repository secrets, and
+ad-hoc signs when they are not.
 
 ## iOS
 

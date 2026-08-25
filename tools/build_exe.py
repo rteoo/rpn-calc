@@ -9,6 +9,10 @@ Needs the build extra: `pip install -e ".[build]"`.
                (macOS always produces a folder inside the .app)
     --debug    a console build that prints why it failed to start
 
+On macOS the bundle is ad-hoc signed unless RPNCALC_CODESIGN_IDENTITY names a
+Developer ID, which switches on Hardened Runtime and the entitlements
+notarization requires. `tools/notarize_macos.py` is the step after that.
+
 The Windows version resource is generated here rather than committed, so
 it cannot drift from the version in pyproject.toml.
 """
@@ -112,33 +116,54 @@ def bundle_executable(app: Path) -> str:
         return str(plistlib.load(handle)["CFBundleExecutable"])
 
 
-def adhoc_sign(app: Path) -> None:
-    """Ad-hoc sign, inside out, so `codesign -dv` succeeds on the bundle.
+ADHOC_IDENTITY = "-"
+BUNDLE_ID = "io.github.rteoo.rpncalc"
+ENTITLEMENTS = PACKAGING / "macos" / "rpncalc.entitlements"
 
-    Notarization needs a Developer ID and is a release-secret step, not this;
-    when it lands it wants Hardened Runtime and the entitlements already in
-    `packaging/macos/rpncalc.entitlements` added to the outer signature. The
-    ordering below is the part that has to be right either way.
+
+def signing_identity() -> str:
+    """The codesign identity: a Developer ID from the environment, or ad-hoc.
+
+    Set by the release workflow once the certificate is in a keychain. An
+    empty value is the same as an absent one, because a workflow that
+    forwards a missing secret hands us the empty string.
+    """
+    return os.environ.get("RPNCALC_CODESIGN_IDENTITY", "").strip() or ADHOC_IDENTITY
+
+
+def codesign_command(target: Path, identity: str) -> list[str]:
+    """The argv for one `codesign` call.
+
+    An ad-hoc signature is for a local build and cannot be notarized, so it
+    skips Hardened Runtime: enabling it without a Developer ID only buys the
+    library-validation crashes it exists to prevent. A real identity gets the
+    runtime, the entitlements PyInstaller's CPython needs under it, and a
+    secure timestamp - notarization rejects a signature without one.
+    """
+    adhoc = identity == ADHOC_IDENTITY
+    command = ["codesign", "--force", "--sign", identity]
+    command += ["--timestamp=none"] if adhoc else ["--timestamp"]
+    if not adhoc:
+        command += ["--options", "runtime", "--entitlements", str(ENTITLEMENTS)]
+    if target.suffix == ".app":
+        command += ["--identifier", BUNDLE_ID]
+    command.append(str(target))
+    return command
+
+
+def sign_app(app: Path, identity: str = ADHOC_IDENTITY) -> None:
+    """Sign inside out, so `codesign -dv` succeeds on the bundle.
+
+    A signature covers the contents of what it seals, so the bundle is signed
+    last. This is what `--deep` used to paper over; Apple deprecated it for
+    signing and notarization will not accept it.
     """
     main_executable = app / "Contents" / "MacOS" / bundle_executable(app)
     for target in nested_code(app):
         if target == main_executable:
             continue
-        subprocess.run(
-            ["codesign", "--force", "--sign", "-", "--timestamp=none", str(target)],
-            check=True,
-        )
-    subprocess.run(
-        [
-            "codesign",
-            "--force",
-            "--sign", "-",
-            "--timestamp=none",
-            "--identifier", "io.github.rteoo.rpncalc",
-            str(app),
-        ],
-        check=True,
-    )
+        subprocess.run(codesign_command(target, identity), check=True)
+    subprocess.run(codesign_command(app, identity), check=True)
 
 
 def zip_app(app: Path) -> Path:
@@ -208,12 +233,17 @@ def main() -> int:
             return 1
         total = sum(f.stat().st_size for f in app.rglob("*") if f.is_file())
         print(f"\n{app}  ({total / 1_048_576:.1f} MB)")
+        identity = signing_identity()
         try:
-            adhoc_sign(app)
-            print("ad-hoc signed (not notarized; first-open is right-click → Open)")
+            sign_app(app, identity)
         except subprocess.CalledProcessError as error:
             print(f"codesign failed: {error}", file=sys.stderr)
             return 1
+        if identity == ADHOC_IDENTITY:
+            print("ad-hoc signed (not notarized; first-open is right-click → Open)")
+        else:
+            print(f"signed with {identity} (hardened runtime)")
+            print("notarize next: python tools/notarize_macos.py dist/rpn-calc.app")
         archive = zip_app(app)
         print(f"{archive}  ({archive.stat().st_size / 1_048_576:.1f} MB)")
         return 0

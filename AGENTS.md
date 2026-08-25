@@ -168,9 +168,29 @@ in parallel, and attaches both artifacts from **one** publishing job - two jobs
 calling `action-gh-release` on the same tag race to create the release.
 Signing is inside out: nested `.dylib`/`.so`, frameworks as whole units, then
 the bundle. `--deep` is deprecated for signing and notarization will not take
-it. Notarization is opt-in via Developer ID secrets; the entitlements it needs
-are in `packaging/macos/rpncalc.entitlements`. Without them the zip still ships
-and first-open is right-click → Open.
+it.
+
+**Signing and notarization are opt-in, and the ad-hoc path must stay the
+default.** `RPNCALC_CODESIGN_IDENTITY` switches `tools/build_exe.py` from an
+ad-hoc signature to a Developer ID one, which is also what turns on Hardened
+Runtime and `packaging/macos/rpncalc.entitlements` - a hardened *ad-hoc* build
+only buys the library-validation crashes the entitlements exist to prevent.
+`tools/notarize_macos.py` is the step after: it refuses an ad-hoc bundle before
+spending the upload, submits with `notarytool --wait`, staples, and **re-zips**,
+because Apple notarizes the archive but Gatekeeper reads the ticket off the
+bundle. The zip built before submission never carries one.
+
+The release workflow reads five secrets - `MACOS_CERTIFICATE`,
+`MACOS_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID`,
+`APPLE_APP_PASSWORD` - and skips both steps when they are absent, so a tag
+still ships an ad-hoc zip whose first-open is right-click → Open. The identity
+string is read back out of the keychain with `security find-identity` rather
+than kept as a sixth secret. Two shell details are load-bearing:
+`set-key-partition-list` is what lets `codesign` reach the private key without
+a prompt, and `security list-keychains -s` must *add* the temporary keychain to
+the search list, since `codesign` searches the list and not the file. Guard the
+steps on `env.MACOS_CERTIFICATE`, not `secrets.*` - `secrets` is not readable
+from a step `if`.
 
 iOS is a host port, not a rewrite. The engines stay Python; the face stays
 QML (`SafeArea`, long-press, `backend.isMobile`). PySide6 has no iOS wheel,
@@ -266,8 +286,9 @@ Two rules for this area:
 - **macOS always produces an `.app` bundle** (a folder build inside). One-file
   on a Mac is what Gatekeeper fights. The bundle id is `io.github.rteoo.rpncalc`.
   Cross-compiling from Linux or Windows is not possible; run the build on a Mac.
-  `tools/build_exe.py` ad-hoc signs and zips it. A tagged `v*` release uploads
-  that zip; notarization waits on Developer ID secrets.
+  `tools/build_exe.py` signs and zips it - ad-hoc unless
+  `RPNCALC_CODESIGN_IDENTITY` names a Developer ID. A tagged `v*` release
+  uploads that zip, notarized when the Apple secrets are set.
 - **`--smoke` refuses the offscreen plugin.** `start()` under
   `QT_QPA_PLATFORM=offscreen` is not evidence the app opens. On a Mac the
   platform must be cocoa. `tools/smoke_macos.py` inspects Info.plist, the

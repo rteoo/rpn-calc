@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Developer ID signing and notarization for the macOS bundle.**
+  `RPNCALC_CODESIGN_IDENTITY` switches `tools/build_exe.py` from an ad-hoc
+  signature to a Developer ID one with Hardened Runtime and the entitlements
+  PyInstaller's CPython needs under it. `tools/notarize_macos.py` submits the
+  zip with `notarytool --wait`, staples the ticket to the `.app`, and re-zips —
+  Apple notarizes the archive, but Gatekeeper reads the ticket off the bundle.
+  A tagged `v*` release runs both when the Apple secrets are configured and
+  skips both when they are not, so the ad-hoc zip still ships either way.
+  Closes #17.
+
 ## [0.2.1] - 2026-08-25
 
 ### Changed
