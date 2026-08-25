@@ -296,6 +296,15 @@ Two rules for this area:
 - **An offscreen `grabWindow()` renders whether or not the window would really
   show.** It is not evidence the app opens; check a real window for that.
 
+## Git
+
+Land pull requests with a merge commit (`gh pr merge --merge`). Never squash-merge or
+rebase-merge. Squash is what put `cursoragent` on the GitHub contributors sidebar via
+`refs/pull/13/head` while keeping `main` clean — the attribution still leaked.
+
+Never author, commit, or add a trailer as Cursor, `cursoragent`, Composer, or any other
+agent identity. Commits use the operator's git identity. The commit is the user's.
+
 ## Rules
 
 - **`HP 50g/` is gitignored and stays that way.** It holds copyrighted HP ROM images and
