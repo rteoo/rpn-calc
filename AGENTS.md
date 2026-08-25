@@ -263,12 +263,34 @@ Two rules for this area:
 - **Excluding a PySide6 module does not exclude the Qt library behind it.** The
   hook copies what it finds, so `packaging/rpncalc.spec` prunes `a.binaries` and
   `a.datas` by name. Without that the build carries `Qt6WebEngineCore.dll` — a
-  whole Chromium, 194 MB — and weighs 159 MB instead of 53 MB.
+  whole Chromium, 194 MB — and weighs 159 MB instead of 53 MB packed (the
+  numbers are one-file `.exe` sizes, the shape that made them easy to compare).
 - `__main__.py` resolves assets through `_resource_dir()`, which honours
   `sys._MEIPASS`; `Path(__file__).parent` is wrong in a frozen build.
+- **A folder build is the default on every host; one file is opt-in.** Measured
+  on Windows, median launch to a mapped window: **3544 ms one-file against
+  727 ms for the folder.** The bootloader unpacks the whole payload to a *new*
+  temporary directory on every launch, so it pays the same cost forever — and
+  because `sys._MEIPASS` is a different path each time, Qt's compiled-QML cache
+  never hits either, making every launch reparse the QML on top of the unpack.
+  `--onefile` (`RPNCALC_BUILD_ONEFILE=1`) still builds the single `.exe`; macOS
+  ignores it, because a folder is what goes inside the `.app`.
+- **Windows ships `dist/rpncalc-windows.zip`, the way macOS already shipped
+  `rpn-calc.app.zip`.** The zip is 56 MB against the old 56 MB one-file `.exe`,
+  so the download did not grow — only the unpacked folder is larger, and that
+  is what buys the startup back.
+- **Startup time is not the QML's fault, so do not go optimising the face.**
+  Loading `Main.qml` into a *warm* engine is ~50 ms, and the 40 `CalcButton`s
+  cost ~16 ms of it. The ~500 ms in a cold `engine.load` is one-time Qt module
+  registration — `QtQuick.Controls` alone is ~145 ms. Hidden `Canvas` items are
+  not the problem either: Qt defers the backing store, so the 120 that never
+  show measure the same as not having them. Forcing `QT_QUICK_BACKEND=software`
+  buys ~77 ms in a frozen build and costs GPU rendering; it was measured and
+  rejected.
 - **Verifying a frozen build means walking the process tree.** One-file mode
   spawns a child process to run the app; the parent owns only a hidden bootloader
   window, so enumerating the parent's windows finds nothing and looks like a hang.
+  A folder build does not spawn that child, so its own pid owns the window.
 - `--debug` builds a console variant. A windowed build has nowhere to print a
   traceback, so a startup failure is silent.
 - **The icon lives in the package, at `src/rpncalc/icons/`, not in `packaging/`.**
