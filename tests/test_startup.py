@@ -106,7 +106,7 @@ class TestStart:
         # Sized to fit the screen the test runs on: a window larger than its
         # display is shrunk on purpose, which TestWindowGeometry covers.
         room = QGuiApplication.primaryScreen().availableGeometry()
-        width = min(460, room.width() - 100)
+        width = min(420, room.width() - 100)
         height = min(700, room.height() - 100)
 
         settings = QSettings()
@@ -175,7 +175,9 @@ class TestWindowGeometry:
 
     Restoring a saved maximized flag is also refused: the faceplate is a fixed
     proportion, and a stale true (left by those bugs) re-maximized on every
-    launch, then wrote itself back on close.
+    launch, then wrote itself back on close. A leftover windowed frame the
+    size of the work area is refused the same way: it still "fits", so it
+    would otherwise open ~1920 pixels wide.
     """
 
     def geometry_of(self, started):
@@ -237,8 +239,37 @@ class TestWindowGeometry:
         started = start([])
         assert started.window.property("visibility") != QWindow.Maximized
         width, height = self.geometry_of(started)
-        assert width <= room.width()
-        assert height <= room.height()
+        design_w = round(420 * started.backend.textScale)
+        design_h = round(820 * started.backend.textScale)
+        fitted = started.backend.fitToScreen(40, 40, design_w, design_h)
+        assert (width, height) == (
+            max(started.window.property("minimumWidth"), fitted["width"]),
+            max(started.window.property("minimumHeight"), fitted["height"]),
+        )
+
+    def test_a_screen_filling_saved_size_opens_at_the_design_face(self, clean_settings):
+        from PySide6.QtCore import QRect, QSettings
+
+        # The leftover the 0.1.1 fix did not catch: a windowed frame the size
+        # of the work area still "fits", so fitToScreen left a 1920-wide face.
+        room = self.available()
+        settings = QSettings()
+        settings.setValue(
+            "window/geometry", QRect(0, 0, room.width(), room.height())
+        )
+        settings.setValue("window/maximized", False)
+        settings.sync()
+
+        started = start([])
+        width, height = self.geometry_of(started)
+        design_w = round(420 * started.backend.textScale)
+        design_h = round(820 * started.backend.textScale)
+        fitted = started.backend.fitToScreen(0, 0, design_w, design_h)
+        assert (width, height) == (
+            max(started.window.property("minimumWidth"), fitted["width"]),
+            max(started.window.property("minimumHeight"), fitted["height"]),
+        )
+        assert width < room.width()
 
     def test_a_window_taller_than_the_screen_is_shrunk_to_fit(self, clean_settings):
         from PySide6.QtCore import QRect, QSettings
@@ -252,9 +283,15 @@ class TestWindowGeometry:
         settings.setValue("window/maximized", False)
         settings.sync()
 
-        width, height = self.geometry_of(start([]))
-        assert width <= room.width()
-        assert height <= room.height()
+        started = start([])
+        width, height = self.geometry_of(started)
+        design_w = round(420 * started.backend.textScale)
+        design_h = round(820 * started.backend.textScale)
+        fitted = started.backend.fitToScreen(0, 0, design_w, design_h)
+        assert (width, height) == (
+            max(started.window.property("minimumWidth"), fitted["width"]),
+            max(started.window.property("minimumHeight"), fitted["height"]),
+        )
 
     def test_shrinking_keeps_the_proportions_of_the_face(self, clean_settings):
         from PySide6.QtCore import QRect, QSettings
@@ -265,10 +302,12 @@ class TestWindowGeometry:
         settings.setValue("window/maximized", False)
         settings.sync()
 
-        width, height = self.geometry_of(start([]))
-        # 4200x8200 is the design ratio; shrinking must not letterbox it.
-        assert width / height == pytest.approx(4200 / 8200, rel=0.02)
+        started = start([])
+        width, height = self.geometry_of(started)
+        # A leftover stretch is discarded; the design face (420x820) is fitted.
+        assert width / height == pytest.approx(420 / 820, rel=0.02)
         assert width <= room.width() and height <= room.height()
+        assert width <= round(420 * started.backend.textScale)
 
     def test_a_window_that_already_fits_is_left_alone(self, clean_settings):
         from PySide6.QtCore import QRect, QSettings

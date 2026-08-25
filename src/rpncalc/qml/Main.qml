@@ -413,10 +413,15 @@ ApplicationWindow {
         if (geometry.valid) {
             wantedX = geometry.x;
             wantedY = geometry.y;
-            wantedWidth = geometry.width;
-            wantedHeight = geometry.height;
             x = geometry.x;
             y = geometry.y;
+            // Honour a smaller saved window; never a larger one. A leftover
+            // fullscreen frame from the old stretch still "fits" the screen,
+            // so fitToScreen would leave a 1920-wide calculator sitting there.
+            if (geometry.width <= wantedWidth && geometry.height <= wantedHeight) {
+                wantedWidth = geometry.width;
+                wantedHeight = geometry.height;
+            }
         }
 
         var size = backend.fitToScreen(wantedX, wantedY, wantedWidth, wantedHeight);
