@@ -8,9 +8,13 @@ under `MODE`. The keyboard is the 50g's lower block, shift planes and all.
 
 ## Download
 
-A built Windows executable and a macOS `.app` zip ship with each
+A Windows zip and a macOS `.app` zip ship with each
 [release](https://github.com/rteoo/rpn-calc/releases/latest). No Python
-installation needed. A macOS zip built without an Apple Developer ID is ad-hoc
+installation needed.
+
+On Windows, unzip `rpncalc-windows.zip` and run `rpncalc.exe` from inside the
+folder it extracts — keep the folder together, since the executable loads Qt
+from beside it. A macOS zip built without an Apple Developer ID is ad-hoc
 signed, and Gatekeeper's first-open is then right-click → Open; a notarized
 one opens with a double-click. To run from source on any desktop, install it.
 
