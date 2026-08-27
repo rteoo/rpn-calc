@@ -27,7 +27,7 @@ from PySide6.QtGui import QColor, QGuiApplication
 
 from . import alg_engine, host, launchkey
 from .keymap import KEY_ROWS, Shift, ShiftState, resolve
-from .numeric import ENG, FIX, SCI, STD, NumberFormat, parse_number
+from .numeric import ENG, FIX, SCI, STD, NumberFormat, localize_number, parse_number
 from .rpn_engine import DEFAULT_ANGLE_MODE, RpnEngine
 
 _WINDOW_GEOMETRY_SETTING = "window/geometry"
@@ -39,6 +39,8 @@ _RPN_MODE_SETTING = "mode/rpn"
 _ANGLE_MODE_SETTING = "mode/angle"
 _FORMAT_MODE_SETTING = "mode/format"
 _FORMAT_DIGITS_SETTING = "mode/formatDigits"
+_DECIMAL_COMMA_SETTING = "display/decimalComma"
+_THOUSANDS_SETTING = "display/thousandsSeparator"
 
 
 # RPN command ids that mean something to the algebraic engine too. The 50g uses
@@ -83,6 +85,7 @@ class Backend(QObject):
     textScaleChanged = Signal()
     themeColorsChanged = Signal()
     calculatorKeyChanged = Signal()
+    displayLocaleChanged = Signal()
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -90,6 +93,8 @@ class Backend(QObject):
         self._rpn = RpnEngine()
         self._shift = ShiftState()
         self._rpn_mode = True
+        self._decimal_comma = False
+        self._thousands_separator = False
 
         self._dark_mode = True
         self._text_scale = 1.0
@@ -109,10 +114,10 @@ class Backend(QObject):
     # -- properties -----------------------------------------------------------
 
     def _get_expression(self) -> str:
-        return self._engine.expression
+        return self._localize_expression(self._engine.expression)
 
     def _get_display(self) -> str:
-        return self._engine.display
+        return self._localize_display(self._engine.display)
 
     expression = Property(str, _get_expression, notify=calculationChanged)
     display = Property(str, _get_display, notify=calculationChanged)
@@ -179,20 +184,33 @@ class Backend(QObject):
     @Slot()
     def copyResult(self) -> None:
         clipboard = QGuiApplication.clipboard()
-        if clipboard is not None:
-            clipboard.setText(
-                self._rpn.copy_text() if self._rpn_mode else self._engine.display)
+        if clipboard is None:
+            return
+        if self._rpn_mode:
+            text = self._rpn.copy_text()
+            # The command line is typed with a canonical dot; copy what is
+            # on the stack the way the display shows it.
+            if text and self._rpn.command_line is None:
+                text = self._localize(text)
+        else:
+            text = self._localize_display(self._engine.display)
+        clipboard.setText(text)
 
     @Slot()
     def pasteNumber(self) -> None:
         # Paste replaces the current entry when the clipboard holds a
-        # number, tolerating surrounding whitespace, a decimal comma, and
-        # the typographic minus this calculator itself puts in expressions.
+        # number, tolerating surrounding whitespace, a decimal comma, thousands
+        # grouping, and the typographic minus this calculator itself puts in
+        # expressions.
         clipboard = QGuiApplication.clipboard()
         if clipboard is None:
             return
 
-        value = parse_number(clipboard.text())
+        value = parse_number(
+            clipboard.text(),
+            decimal=self._decimal_char(),
+            thousands=self._thousands_separator,
+        )
         if value is None:
             return
 
@@ -299,7 +317,7 @@ class Backend(QObject):
     rpnMode = Property(bool, _get_rpn_mode, _set_rpn_mode, notify=modeChanged)
 
     def _get_stack_lines(self) -> list:
-        return self._rpn.stack_lines()
+        return [self._localize(line) for line in self._rpn.stack_lines()]
 
     def _get_command_line(self) -> str:
         return self._rpn.command_line or ""
@@ -432,6 +450,57 @@ class Backend(QObject):
         self.modeChanged.emit()
         self.stackChanged.emit()
 
+    def _get_decimal_comma(self) -> bool:
+        return self._decimal_comma
+
+    def _get_thousands_separator(self) -> bool:
+        return self._thousands_separator
+
+    decimalComma = Property(bool, _get_decimal_comma, notify=displayLocaleChanged)
+    thousandsSeparator = Property(
+        bool, _get_thousands_separator, notify=displayLocaleChanged)
+
+    @Slot(bool)
+    def setDecimalComma(self, enabled: bool) -> None:
+        if self._decimal_comma == enabled:
+            return
+        self._decimal_comma = enabled
+        self._display_locale_changed()
+
+    @Slot(bool)
+    def setThousandsSeparator(self, enabled: bool) -> None:
+        if self._thousands_separator == enabled:
+            return
+        self._thousands_separator = enabled
+        self._display_locale_changed()
+
+    def _display_locale_changed(self) -> None:
+        self._save_modes()
+        self.displayLocaleChanged.emit()
+        self.stackChanged.emit()
+        self.calculationChanged.emit()
+
+    def _decimal_char(self) -> str:
+        return "," if self._decimal_comma else "."
+
+    def _localize(self, text: str) -> str:
+        return localize_number(
+            text, decimal=self._decimal_char(), thousands=self._thousands_separator
+        )
+
+    def _localize_display(self, text: str) -> str:
+        if text == "Error":
+            return text
+        return self._localize(text)
+
+    def _localize_expression(self, text: str) -> str:
+        if not text:
+            return text
+        return " ".join(
+            self._localize(token) if any(char.isdigit() for char in token) else token
+            for token in text.split(" ")
+        )
+
     # -- the keyboard's dedicated calculator key ------------------------------
 
     def _get_calculator_key_supported(self) -> bool:
@@ -480,6 +549,8 @@ class Backend(QObject):
             self._rpn.set_number_format(NumberFormat(mode, digits))
         except ValueError:
             self._rpn.set_number_format(NumberFormat())
+        self._decimal_comma = settings.value(_DECIMAL_COMMA_SETTING, False, type=bool)
+        self._thousands_separator = settings.value(_THOUSANDS_SETTING, False, type=bool)
 
     def _save_modes(self) -> None:
         settings = QSettings()
@@ -487,6 +558,8 @@ class Backend(QObject):
         settings.setValue(_ANGLE_MODE_SETTING, self._rpn.angle_mode)
         settings.setValue(_FORMAT_MODE_SETTING, self._rpn.number_format.mode)
         settings.setValue(_FORMAT_DIGITS_SETTING, self._rpn.number_format.digits)
+        settings.setValue(_DECIMAL_COMMA_SETTING, self._decimal_comma)
+        settings.setValue(_THOUSANDS_SETTING, self._thousands_separator)
 
     def _load_omarchy_theme(self) -> None:
         defaults = _DARK_THEME if self._dark_mode else _LIGHT_THEME

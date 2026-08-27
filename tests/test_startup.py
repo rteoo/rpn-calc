@@ -658,14 +658,18 @@ class TestFitToScreen:
 
 
 class TestSettingsMenu:
-    """The calculator-key toggle is the only settings surface.
+    """Host-side options live in a context menu on the display.
 
     Material MenuItem sizes itself against the style font, then this app draws
     it with the scaled interface font, so the popup was too narrow and the
     label elided to "Launch on th…".
     """
 
-    LABEL = "Launch on the calculator key"
+    LABELS = (
+        "Use comma as decimal",
+        "Thousands separator",
+        "Launch on the calculator key",
+    )
 
     def test_the_item_keeps_its_full_label(self, clean_settings):
         from PySide6.QtCore import QObject
@@ -673,9 +677,21 @@ class TestSettingsMenu:
         started = start([])
         item = started.window.findChild(QObject, "calculatorKeyItem")
         assert item is not None
-        assert item.property("text") == self.LABEL
+        assert item.property("text") == "Launch on the calculator key"
 
-    def test_the_popup_is_wider_than_the_label(self, clean_settings):
+    def test_display_locale_items_are_on_the_menu(self, clean_settings):
+        from PySide6.QtCore import QObject
+
+        started = start([])
+        decimal = started.window.findChild(QObject, "decimalCommaItem")
+        thousands = started.window.findChild(QObject, "thousandsItem")
+        assert decimal is not None and thousands is not None
+        assert decimal.property("text") == "Use comma as decimal"
+        assert thousands.property("text") == "Thousands separator"
+        assert decimal.property("checked") is False
+        assert thousands.property("checked") is False
+
+    def test_the_popup_is_wider_than_the_longest_label(self, clean_settings):
         from PySide6.QtCore import QObject
         from PySide6.QtGui import QFontMetrics
 
@@ -685,6 +701,7 @@ class TestSettingsMenu:
         assert menu is not None and item is not None
 
         font = item.property("font")
-        advance = QFontMetrics(font).horizontalAdvance(self.LABEL)
+        metrics = QFontMetrics(font)
+        widest = max(metrics.horizontalAdvance(label) for label in self.LABELS)
         em = font.pixelSize() if font.pixelSize() > 0 else max(1, round(font.pointSizeF() * 4 / 3))
-        assert menu.property("width") >= advance + em
+        assert menu.property("width") >= widest + em

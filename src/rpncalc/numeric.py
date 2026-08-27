@@ -54,7 +54,13 @@ class NumberFormat:
 
 
 def format_number(value: float, fmt: NumberFormat | None = None) -> str:
-    """Render `value` for the display."""
+    """Render `value` for the display.
+
+    Always canonical: ASCII minus, ``.`` as the decimal point, no grouping.
+    `localize_number` is what turns that into a comma decimal or thousands
+    separators, and only at the QML boundary - ECHO, EDIT, and the command
+    line keep this form so they stay parseable.
+    """
     if value == 0:
         value = 0.0  # Collapse negative zero.
     if not math.isfinite(value):
@@ -68,6 +74,61 @@ def format_number(value: float, fmt: NumberFormat | None = None) -> str:
     if fmt.mode == SCI:
         return _format_sci(value, fmt.digits)
     return _format_eng(value, fmt.digits)
+
+
+def localize_number(
+    text: str, *, decimal: str = ".", thousands: bool = False
+) -> str:
+    """Apply a decimal comma and/or thousands grouping to canonical text.
+
+    `text` is what `format_number` returned: ``.`` as the decimal point, an
+    optional ``e``/``E`` exponent, no grouping. The thousands mark is the
+    other punctuation from `decimal` - comma decimal gets ``.`` grouping,
+    and the other way around.
+    """
+    if decimal not in (".", ","):
+        raise ValueError(f"unknown decimal separator: {decimal!r}")
+    if decimal == "." and not thousands:
+        return text
+
+    thousands_mark = "," if decimal == "." else "."
+
+    sign = ""
+    body = text
+    if body.startswith("-"):
+        sign = "-"
+        body = body[1:]
+
+    exponent_at = next((i for i, char in enumerate(body) if char in "eE"), -1)
+    if exponent_at >= 0:
+        mantissa = body[:exponent_at]
+        suffix = body[exponent_at:]
+    else:
+        mantissa = body
+        suffix = ""
+
+    if "." in mantissa:
+        integer, fraction = mantissa.split(".", 1)
+        frac_part = decimal + fraction
+    else:
+        integer = mantissa
+        frac_part = ""
+
+    if thousands:
+        integer = _group_thousands(integer, thousands_mark)
+
+    return sign + integer + frac_part + suffix
+
+
+def _group_thousands(digits: str, separator: str) -> str:
+    if len(digits) <= 3:
+        return digits
+    groups: list[str] = []
+    rest = digits
+    while rest:
+        groups.append(rest[-3:])
+        rest = rest[:-3]
+    return separator.join(reversed(groups))
 
 
 def roundtrip(value: float) -> str:
@@ -157,16 +218,76 @@ def seal_number(entry: str) -> str:
     return sealed
 
 
-def parse_number(text: str) -> float | None:
+def parse_number(
+    text: str, *, decimal: str = ".", thousands: bool = False
+) -> float | None:
     """Read a number the way paste does: tolerant of spaces, typographic minus,
-    a decimal comma, and the HP's `E` exponent marker. None if it is not a number.
+    a decimal comma, thousands grouping in either locale, and the HP's `E`
+    exponent marker. None if it is not a number.
+
+    `decimal` and `thousands` are the active display locale, so copy/paste
+    of what this calculator itself showed round-trips. `100,001` is one
+    hundred thousand and one with a thousands comma, and 100.001 with a
+    decimal comma; the locale is what distinguishes them. Both marks
+    together (``100,000.0001`` / ``100.000,0001``) are unambiguous either way.
     """
+    if decimal not in (".", ","):
+        raise ValueError(f"unknown decimal separator: {decimal!r}")
     cleaned = text.strip().replace(MINUS_SIGN, "-").replace(" ", "")
-    for candidate in (cleaned, cleaned.replace(",", ".")):
-        try:
-            value = float(candidate)
-        except ValueError:
-            continue
-        if math.isfinite(value):
-            return value
+    if not cleaned:
+        return None
+    candidate = _canonical_number_text(
+        cleaned, decimal=decimal, thousands=thousands
+    )
+    try:
+        value = float(candidate)
+    except ValueError:
+        return None
+    if math.isfinite(value):
+        return value
     return None
+
+
+def _canonical_number_text(text: str, *, decimal: str, thousands: bool) -> str:
+    """Strip grouping and turn a decimal comma into ``.``."""
+    last_comma = text.rfind(",")
+    last_dot = text.rfind(".")
+    if last_comma >= 0 and last_dot >= 0:
+        if last_comma > last_dot:
+            # 100.000,0001 — comma is the decimal, dots are grouping.
+            return text.replace(".", "").replace(",", ".")
+        # 100,000.0001 — dot is the decimal, commas are grouping.
+        return text.replace(",", "")
+
+    if decimal == ",":
+        if last_dot >= 0 and thousands and _is_thousands_grouping(text, "."):
+            return text.replace(".", "").replace(",", ".")
+        return text.replace(",", ".")
+
+    if last_comma >= 0:
+        if thousands and _is_thousands_grouping(text, ","):
+            return text.replace(",", "")
+        return text.replace(",", ".")
+    return text
+
+
+def _is_thousands_grouping(text: str, separator: str) -> bool:
+    """True when `separator` only appears as groups of three digits.
+
+    A single comma in a scientific mantissa (``1,235E4``) is a decimal comma,
+    not thousands: SCI/ENG never group the integer part, so that form is how
+    a comma-decimal display writes ``1.235E4``. Two or more groups with an
+    exponent (``1,000,000E3``) are still thousands.
+    """
+    mantissa = text[1:] if text[:1] in "+-" else text
+    lowered = mantissa.lower()
+    exponent_at = lowered.find("e")
+    if exponent_at >= 0:
+        mantissa = mantissa[:exponent_at]
+    parts = mantissa.split(separator)
+    min_parts = 3 if exponent_at >= 0 else 2
+    if len(parts) < min_parts:
+        return False
+    if not parts[0].isdigit() or not 1 <= len(parts[0]) <= 3:
+        return False
+    return all(part.isdigit() and len(part) == 3 for part in parts[1:])
