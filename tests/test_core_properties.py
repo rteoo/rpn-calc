@@ -19,7 +19,7 @@ from hypothesis import strategies as st
 
 import oracle
 from rpncalc.alg_engine import AlgEngine
-from rpncalc.numeric import ENG, FIX, SCI, STD, NumberFormat, format_number, parse_number
+from rpncalc.numeric import ENG, FIX, SCI, STD, NumberFormat, format_number, localize_number, parse_number
 from rpncalc.rpn_engine import CalcError, RpnEngine
 from rpncalc.stack import RpnStack, StackError
 
@@ -254,6 +254,14 @@ class TestFormatting:
         for mode in (FIX, SCI, ENG):
             text = format_number(x, NumberFormat(mode, digits))
             assert parse_number(text) is not None, f"{mode} {digits} of {x!r}: {text!r}"
+
+    @given(REAL)
+    def test_localized_display_parses_back(self, x):
+        text = format_number(x)
+        expected = parse_number(text)
+        for decimal, thousands in ((".", False), (".", True), (",", False), (",", True)):
+            shown = localize_number(text, decimal=decimal, thousands=thousands)
+            assert parse_number(shown, decimal=decimal, thousands=thousands) == expected
 
     @given(REAL, st.integers(min_value=0, max_value=11))
     def test_scientific_and_engineering_agree_on_magnitude(self, x, digits):
