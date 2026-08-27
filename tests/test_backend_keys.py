@@ -152,6 +152,16 @@ class TestModePersistence:
         assert revived.numberFormatLabel == "FIX 2"
         assert revived.rpnMode is False
 
+    def test_display_locale_survives_a_restart(self, backend):
+        backend.setDecimalComma(False)
+        backend.setThousandsSeparator(False)
+        backend.setDecimalComma(True)
+        backend.setThousandsSeparator(True)
+
+        revived = Backend()
+        assert revived.decimalComma is True
+        assert revived.thousandsSeparator is True
+
     def test_a_corrupt_setting_does_not_stop_startup(self, backend):
         settings = QSettings()
         settings.setValue("mode/angle", "GRADIANS-ISH")
@@ -169,6 +179,68 @@ class TestDisplayFormatting:
         assert backend.stackLines == ["0.333333333333333"]
         backend.setNumberFormat(FIX, 2)
         assert backend.stackLines == ["0.33"]
+
+    def test_thousands_separator_groups_the_integer_part(self, backend):
+        press_commands(backend, "1 0 0 enter 1 0 0 . 0 0 1 enter")
+        press_commands(backend, "1 0 0 0 0 0 enter 1 0 0 0 0 0 . 0 0 0 1 enter")
+        backend.setThousandsSeparator(True)
+        assert backend.stackLines == [
+            "100,000.0001",
+            "100,000",
+            "100.001",
+            "100",
+        ]
+
+    def test_a_decimal_comma_swaps_the_point(self, backend):
+        press_commands(backend, "1 0 0 . 0 0 1 enter")
+        backend.setDecimalComma(True)
+        assert backend.stackLines == ["100,001"]
+
+    def test_thousands_follows_the_decimal_comma(self, backend):
+        press_commands(backend, "1 0 0 0 0 0 . 0 0 0 1 enter")
+        backend.setDecimalComma(True)
+        backend.setThousandsSeparator(True)
+        assert backend.stackLines == ["100.000,0001"]
+
+    def test_the_command_line_stays_canonical(self, backend):
+        press_ids(backend, "1 0 0 0 0 0")
+        backend.setThousandsSeparator(True)
+        backend.setDecimalComma(True)
+        assert backend.commandLine == "100000"
+
+    def test_echo_writes_canonical_text_onto_the_command_line(self, backend):
+        press_commands(backend, "1 0 0 0 0 0 enter")
+        backend.setThousandsSeparator(True)
+        assert backend.stackLines == ["100,000"]
+        backend.pressKeyId("stk")
+        backend.pressMenu(0)  # ECHO
+        assert backend.commandLine == "100000"
+
+    def test_algebraic_display_follows_the_decimal_comma(self, backend):
+        backend.toggleEntryMode()
+        press_commands(backend, "1 / 2 enter")
+        assert backend.display == "0.5"
+        backend.setDecimalComma(True)
+        assert backend.display == "0,5"
+
+    def test_algebraic_entry_shows_the_decimal_comma(self, backend):
+        backend.toggleEntryMode()
+        press_commands(backend, "1 . 5")
+        backend.setDecimalComma(True)
+        assert backend.display == "1,5"
+
+    def test_algebraic_error_is_not_grouped(self, backend):
+        backend.toggleEntryMode()
+        press_commands(backend, "1 / 0 enter")
+        backend.setThousandsSeparator(True)
+        assert backend.display == "Error"
+
+    def test_algebraic_expression_localizes_its_numbers(self, backend):
+        backend.toggleEntryMode()
+        press_commands(backend, "0 . 1 + 0 . 2 enter")
+        backend.setDecimalComma(True)
+        assert backend.display == "0,3"
+        assert backend.expression == "0,1 + 0,2"
 
     def test_angle_mode_reaches_trigonometry(self, backend):
         backend.setAngleMode("DEG")
@@ -217,16 +289,35 @@ class TestClipboard:
         backend.copyResult()
         assert clipboard.text() == "42"
 
+    def test_copy_takes_the_grouped_display(self, backend, clipboard):
+        press_commands(backend, "1 0 0 0 0 0 enter")
+        backend.setThousandsSeparator(True)
+        backend.copyResult()
+        assert clipboard.text() == "100,000"
+
     def test_copy_takes_the_open_command_line(self, backend, clipboard):
         press_ids(backend, "1 enter 3 dot 5")
         backend.copyResult()
         assert clipboard.text() == "3.5"
+
+    def test_copy_of_the_command_line_stays_canonical(self, backend, clipboard):
+        press_ids(backend, "1 0 0 0 0 0")
+        backend.setThousandsSeparator(True)
+        backend.copyResult()
+        assert clipboard.text() == "100000"
 
     def test_paste_pushes_onto_the_stack_in_rpn(self, backend, clipboard):
         press_ids(backend, "7 enter")
         clipboard.setText(" 2,5 ")
         backend.pasteNumber()
         assert backend.stackLines == ["2.5", "7"]
+
+    def test_paste_accepts_grouped_text(self, backend, clipboard):
+        backend.setThousandsSeparator(True)
+        clipboard.setText("100,000")
+        backend.pasteNumber()
+        backend.setThousandsSeparator(False)
+        assert backend.stackLines == ["100000"]
 
     def test_paste_still_reaches_the_algebraic_entry(self, backend, clipboard):
         backend.toggleEntryMode()
@@ -237,6 +328,13 @@ class TestClipboard:
     def test_copy_of_an_empty_stack_is_empty(self, backend, clipboard):
         backend.copyResult()
         assert clipboard.text() == ""
+
+    def test_copy_takes_the_localized_algebraic_result(self, backend, clipboard):
+        backend.toggleEntryMode()
+        press_commands(backend, "1 / 2 enter")
+        backend.setDecimalComma(True)
+        backend.copyResult()
+        assert clipboard.text() == "0,5"
 
 
 class TestInteractiveStack:

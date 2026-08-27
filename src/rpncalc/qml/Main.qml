@@ -94,9 +94,9 @@ ApplicationWindow {
     }
 
     // The 50g faceplate has no settings key and this window has no room to
-    // invent one, so the handful of host-side options live in a context menu
-    // on the display. Right-click it, Ctrl/⌘+comma, or press and hold on a
-    // touch screen.
+    // invent one, so display locale and the handful of host-side options live
+    // in a context menu on the display. Right-click it, Ctrl/⌘+comma, or
+    // press and hold on a touch screen.
     //
     // Material MenuItem measures itself against the style's default font and
     // then draws with the application font, which this app scales to the
@@ -104,7 +104,7 @@ ApplicationWindow {
     // to "Launch on th…". Size the menu from the string we actually paint,
     // including the check indicator the style draws but does not reserve.
     FontMetrics {
-        id: calculatorKeyMetrics
+        id: settingsMenuMetrics
         // Follow the item's font, not win.font: Material restyles MenuItem
         // after creation, which is how the popup was measured too narrow.
         font: calculatorKeyItem.font
@@ -115,10 +115,45 @@ ApplicationWindow {
         objectName: "settingsMenu"
         font: calculatorKeyItem.font
         width: {
-            var em = Math.max(1, calculatorKeyMetrics.height)
-            var label = calculatorKeyMetrics.advanceWidth(calculatorKeyItem.text)
-            return Math.ceil(label) + Math.ceil(em * 4)
+            var em = Math.max(1, settingsMenuMetrics.height)
+            var labels = [
+                decimalCommaItem.text,
+                thousandsItem.text,
+                calculatorKeyItem.text
+            ]
+            var widest = 0
+            for (var i = 0; i < labels.length; i++)
+                widest = Math.max(widest, settingsMenuMetrics.advanceWidth(labels[i]))
+            return Math.ceil(widest) + Math.ceil(em * 4)
         }
+
+        MenuItem {
+            id: decimalCommaItem
+            objectName: "decimalCommaItem"
+            text: qsTr("Use comma as decimal")
+            font: win.font
+            checkable: true
+            checked: backend.decimalComma
+            onTriggered: {
+                backend.setDecimalComma(checked);
+                checked = Qt.binding(function() { return backend.decimalComma; });
+            }
+        }
+
+        MenuItem {
+            id: thousandsItem
+            objectName: "thousandsItem"
+            text: qsTr("Thousands separator")
+            font: win.font
+            checkable: true
+            checked: backend.thousandsSeparator
+            onTriggered: {
+                backend.setThousandsSeparator(checked);
+                checked = Qt.binding(function() { return backend.thousandsSeparator; });
+            }
+        }
+
+        MenuSeparator {}
 
         MenuItem {
             id: calculatorKeyItem
