@@ -26,7 +26,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor, QGuiApplication
 
 from . import alg_engine, host, launchkey
-from .keymap import KEY_ROWS, Shift, ShiftState, resolve
+from .keymap import KEY_ROWS, ShiftState, resolve
 from .numeric import ENG, FIX, SCI, STD, NumberFormat, localize_number, parse_number
 from .rpn_engine import DEFAULT_ANGLE_MODE, RpnEngine
 
@@ -86,6 +86,7 @@ class Backend(QObject):
     themeColorsChanged = Signal()
     calculatorKeyChanged = Signal()
     displayLocaleChanged = Signal()
+    financeChanged = Signal()
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -95,6 +96,7 @@ class Backend(QObject):
         self._rpn_mode = True
         self._decimal_comma = False
         self._thousands_separator = False
+        self._finance_open = False
 
         self._dark_mode = True
         self._text_scale = 1.0
@@ -338,9 +340,13 @@ class Backend(QObject):
         return self._rpn.cursor_level or 0
 
     def _get_menu_labels(self) -> list:
+        if self._finance_open:
+            return ["EDIT", "AMOR", "SOLVE", "", "", ""]
         return self._rpn.menu_labels()
 
     def _get_menu_enabled(self) -> list:
+        if self._finance_open:
+            return [True, False, True, False, False, False]
         return self._rpn.menu_enabled()
 
     cursorLevel = Property(int, _get_cursor_level, notify=stackChanged)
@@ -351,6 +357,11 @@ class Backend(QObject):
     def pressMenu(self, index: int) -> None:
         """A soft key, F1 to F6 left to right."""
         if not self._rpn_mode:
+            return
+        if self._finance_open:
+            self._rpn.finance_menu(index)
+            self.stackChanged.emit()
+            self.financeChanged.emit()
             return
         self._rpn.press_menu(index)
         self.stackChanged.emit()
@@ -382,6 +393,7 @@ class Backend(QObject):
                     "labelRight": key.right_label,
                     "alpha": key.alpha,
                     "style": key.style,
+                    "span": key.span,
                     "live": self._key_is_live(key),
                     # iA Writer Mono has no arrow glyphs, so these caps are
                     # drawn rather than typeset.
@@ -399,7 +411,7 @@ class Backend(QObject):
     def _key_is_live(self, key) -> bool:
         if not key.is_live():
             return False
-        if self._rpn_mode or key.style in ("shift_left", "shift_right"):
+        if self._rpn_mode or key.style == "shift_right":
             return True
         # In algebraic mode only the keys omacalc's engine understands respond.
         return any(
@@ -407,6 +419,38 @@ class Backend(QObject):
             for action in (key.action, key.left_action, key.right_action)
             if action
         )
+
+    def _get_finance_open(self) -> bool:
+        return self._finance_open
+
+    financeOpen = Property(bool, _get_finance_open, notify=financeChanged)
+
+    def _finance_field_lines(self) -> list:
+        """Register lines for the 50g-style FINANCE screen."""
+        fin = self._rpn.finance
+        fmt = self._rpn.number_format
+        from .numeric import format_number
+
+        def show(value: float) -> str:
+            return self._localize(format_number(value, fmt))
+
+        begin_end = "Begin" if fin.begin else "End"
+        return [
+            {"id": "n", "label": "N:", "value": show(fin.n)},
+            {"id": "i_yr", "label": "I%YR:", "value": show(fin.i_yr)},
+            {"id": "pv", "label": "PV:", "value": show(fin.pv)},
+            {"id": "pmt", "label": "PMT:", "value": show(fin.pmt)},
+            {"id": "fv", "label": "FV:", "value": show(fin.fv)},
+            {"id": "pyr", "label": "P/YR:", "value": show(fin.pyr)},
+            {"id": "begin", "label": begin_end, "value": ""},
+        ]
+
+    financeFields = Property(list, _finance_field_lines, notify=financeChanged)
+
+    def _get_finance_cursor(self) -> int:
+        return self._rpn.finance_cursor
+
+    financeCursor = Property(int, _get_finance_cursor, notify=financeChanged)
 
     @Slot(str)
     def pressKeyId(self, key_id: str) -> None:
@@ -419,18 +463,58 @@ class Backend(QObject):
     @Slot(str)
     def pressCommand(self, command: str) -> None:
         """A resolved command, from the keypad or the physical keyboard."""
+        if command in ("copy", "cut", "paste"):
+            self._handle_clipboard(command)
+            return
+        if command == "finance":
+            self._toggle_finance()
+            return
+
+        if self._finance_open and self._rpn_mode:
+            if command in ("up", "down"):
+                self._rpn.finance_move(command)
+                self.financeChanged.emit()
+                return
+            if command == "clear_entry":
+                self._finance_open = False
+                self.financeChanged.emit()
+                return
+
         if self._rpn_mode:
             self._rpn.press(command)
             self.stackChanged.emit()
+            self.financeChanged.emit()
             return
 
         if command in ("up", "down", "left", "right") or command.startswith("ist_"):
             return  # the stack browser has nothing to browse in algebraic mode
+        if command.startswith("fin_") or command in (
+            "e", "fact", "sum_plus", "delta_percent", "finance",
+        ):
+            return
         key = command if command.isdigit() else _ALG_EQUIVALENT.get(command)
         if key is None:
             return
         self._engine.press(key)
         self.calculationChanged.emit()
+
+    def _toggle_finance(self) -> None:
+        if not self._rpn_mode:
+            return
+        self._finance_open = not self._finance_open
+        if self._finance_open:
+            self._rpn.cursor_level = None  # finance owns the display
+        self.financeChanged.emit()
+        self.stackChanged.emit()
+
+    def _handle_clipboard(self, command: str) -> None:
+        if command == "paste":
+            self.pasteNumber()
+            return
+        self.copyResult()
+        if command == "cut" and self._rpn_mode:
+            self._rpn.press("drop")
+            self.stackChanged.emit()
 
     @Slot()
     def toggleEntryMode(self) -> None:

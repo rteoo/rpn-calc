@@ -55,13 +55,13 @@ class TestRpnMode:
         assert backend.stackLines == ["25"]
 
     def test_shift_plane_reaches_a_function(self, backend):
-        press_ids(backend, "1 6 enter")
+        press_ids(backend, "2 enter")
         assert backend.shiftState == "none"
-        backend.pressKeyId("shift_left")
-        assert backend.shiftState == "left"
-        backend.pressKeyId("sqrt")  # left-shift on the root key is x squared
+        backend.pressKeyId("shift")
+        assert backend.shiftState == "right"
+        backend.pressKeyId("eex")  # shift-EEX is 10^x
         assert backend.shiftState == "none"
-        assert backend.stackLines == ["256"]
+        assert backend.stackLines == ["100"]
 
     def test_unshifted_root_key_is_square_root(self, backend):
         press_ids(backend, "8 1 enter sqrt")
@@ -94,13 +94,12 @@ class TestRpnMode:
 
     def test_clear_and_clear_entry_differ(self, backend):
         press_ids(backend, "6 enter 1 2")
-        backend.pressKeyId("shift_left")
-        backend.pressKeyId("backspace")  # left-shift DEL: cancel the entry
+        backend.pressKeyId("on")  # ON: cancel the entry
         assert backend.entering is False
         assert backend.stackLines == ["6"]
 
-        backend.pressKeyId("shift_right")
-        backend.pressKeyId("backspace")  # right-shift CLEAR: empty the stack
+        backend.pressKeyId("shift")
+        backend.pressKeyId("backspace")  # shift-CLEAR: empty the stack
         assert backend.stackLines == []
 
 
@@ -131,7 +130,7 @@ class TestAlgMode:
         assert live["plus"] is True
         assert live["enter"] is True
         assert live["sqrt"] is False
-        assert live["stack"] is False
+        assert live["pv"] is False  # finance keys are RPN-only on this face
 
     def test_switching_back_preserves_the_stack(self, backend):
         press_ids(backend, "1 2 enter")
@@ -212,7 +211,7 @@ class TestDisplayFormatting:
         press_commands(backend, "1 0 0 0 0 0 enter")
         backend.setThousandsSeparator(True)
         assert backend.stackLines == ["100,000"]
-        backend.pressKeyId("stk")
+        backend.pressKeyId("menu")
         backend.pressMenu(0)  # ECHO
         assert backend.commandLine == "100000"
 
@@ -244,7 +243,8 @@ class TestDisplayFormatting:
 
     def test_angle_mode_reaches_trigonometry(self, backend):
         backend.setAngleMode("DEG")
-        press_ids(backend, "9 0 enter sin")
+        # Trig is off the faceplate; drive the engine command directly.
+        press_commands(backend, "9 0 enter sin")
         assert backend.stackLines == ["1"]
 
 
@@ -349,9 +349,9 @@ class TestInteractiveStack:
         assert backend.cursorLevel == 0
         assert backend.menuLabels == []
 
-    def test_the_stk_key_opens_the_browser(self, backend):
+    def test_the_menu_key_opens_the_browser(self, backend):
         self.build(backend)
-        backend.pressKeyId("stk")
+        backend.pressKeyId("menu")
         assert backend.cursorLevel == 1
         assert backend.menuLabels == ["ECHO", "VIEW", "EDIT", "PICK", "ROLL", "ROLLD"]
 
@@ -378,7 +378,7 @@ class TestInteractiveStack:
 
     def test_view_is_disabled(self, backend):
         self.build(backend)
-        backend.pressKeyId("stk")
+        backend.pressKeyId("menu")
         assert backend.menuEnabled == [True, False, True, True, True, True]
         before = backend.stackLines
         backend.pressMenu(1)
@@ -392,7 +392,7 @@ class TestInteractiveStack:
 
     def test_arrows_do_nothing_in_algebraic_mode(self, backend):
         backend.toggleEntryMode()
-        for key_id in ("up", "down", "left", "right", "stk"):
+        for key_id in ("up", "down", "left", "right", "menu"):
             backend.pressKeyId(key_id)
         assert backend.cursorLevel == 0
         assert backend.menuLabels == []

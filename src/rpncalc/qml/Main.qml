@@ -319,7 +319,7 @@ ApplicationWindow {
                 anchors.right: parent.right
                 anchors.bottom: softMenu.showing ? softMenu.top : parent.bottom
                 anchors.bottomMargin: softMenu.showing ? win.scaledSize(6) : 0
-                visible: backend.rpnMode
+                visible: backend.rpnMode && !backend.financeOpen
                 lines: backend.stackLines
                 commandLine: backend.commandLine
                 entering: backend.entering
@@ -328,6 +328,23 @@ ApplicationWindow {
                 mutedColor: win.mutedColor
                 fontPixelSize: win.scaledSize(20)
                 rowSpacing: win.scaledSize(3)
+            }
+
+            FinanceView {
+                anchors.top: statusBar.bottom
+                anchors.topMargin: win.scaledSize(6)
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: softMenu.showing ? softMenu.top : parent.bottom
+                anchors.bottomMargin: softMenu.showing ? win.scaledSize(6) : 0
+                visible: backend.rpnMode && backend.financeOpen
+                fields: backend.financeFields
+                cursor: backend.financeCursor
+                inkColor: win.inkColor
+                mutedColor: win.mutedColor
+                pageColor: win.pageColor
+                fontPixelSize: win.scaledSize(18)
+                titlePixelSize: win.scaledSize(13)
             }
 
             SoftMenu {
@@ -387,8 +404,7 @@ ApplicationWindow {
             color: win.mixColors(win.pageColor, win.inkColor, 0.16)
         }
 
-        // The 50g's lower keyboard: seven rows of five, same face in both modes,
-        // exactly as the real calculator does it.
+        // Faceplate keypad: eight rows, ENTER spanning two columns on the last.
         ColumnLayout {
             id: keypad
             anchors.left: parent.left
@@ -412,9 +428,15 @@ ApplicationWindow {
 
                         CalcButton {
                             required property var modelData
+                            // ENTER spans two columns on the bottom row; preferred
+                            // width keeps the five-unit row geometry intact.
+                            readonly property int cellSpan:
+                                (modelData.span !== undefined && modelData.span > 0)
+                                ? modelData.span : 1
 
                             Layout.fillWidth: true
                             Layout.fillHeight: true
+                            Layout.preferredWidth: cellSpan * 100
                             label: modelData.label
                             keyValue: modelData.keyId
                             kind: modelData.style

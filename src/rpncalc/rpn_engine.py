@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 
+from .finance import FinanceError, FinanceMemory
 from .numeric import NumberFormat, format_number, parse_number, seal_number
 from .stack import RpnStack, StackError
 
@@ -67,6 +68,7 @@ class RpnEngine:
         "atan": "_fn_atan",
         "abs": "_fn_abs",
         "neg": "_fn_neg",
+        "fact": "_fn_fact",
     }
     _BINARY_METHODS = {
         "+": "_fn_add",
@@ -77,7 +79,14 @@ class RpnEngine:
         "mod": "_fn_mod",
         "percent": "_fn_percent",
         "xroot": "_fn_xroot",
+        "delta_percent": "_fn_delta_percent",
     }
+    _FINANCE_COMMANDS = frozenset({
+        "fin_n", "fin_i", "fin_pv", "fin_pmt", "fin_fv",
+        "fin_nj", "fin_irr", "fin_npv", "fin_cfo", "fin_cfj",
+    })
+    # Fields the 50g FINANCE screen cursor walks, in display order.
+    _FINANCE_FIELDS = ("n", "i_yr", "pv", "pmt", "fv", "pyr", "begin")
     # Stack commands that take no operand from the entry itself - DEPTH and
     # the fixed-arity reorder commands (roll/rolld/pick pop their own count
     # argument off level 1, see `_roll`/`_rolld`/`_pick`).
@@ -100,6 +109,16 @@ class RpnEngine:
         # The interactive stack browser: None when closed, otherwise the level
         # the cursor sits on (1 = level 1, counting up into the stack).
         self.cursor_level: int | None = None
+        self.finance = FinanceMemory()
+        # Index into `_FINANCE_FIELDS` while the FINANCE screen is open.
+        self.finance_cursor = 0
+        # Set when digits (or a paste) put a value ready for a 12C register
+        # store; cleared by operators and by the store/solve itself.
+        self._finance_store_pending = False
+        # Two-variable running totals for Σ+.
+        self._stats_n = 0
+        self._stats_sx = 0.0
+        self._stats_sy = 0.0
 
     # -- UI-facing surface -------------------------------------------------
 
@@ -131,10 +150,11 @@ class RpnEngine:
         return (
             key in _DIGITS
             or key in (".", "eex", "enter", "spc", "backspace", "chs",
-                       "clear", "clear_entry", "undo", "pi")
+                       "clear", "clear_entry", "undo", "pi", "e", "sum_plus")
             or key in self._UNARY_METHODS
             or key in self._BINARY_METHODS
             or key in self._STACK_COMMANDS
+            or key in self._FINANCE_COMMANDS
             or key in _INTERACTIVE_COMMANDS
             or key in _ARROWS
         )
@@ -146,7 +166,7 @@ class RpnEngine:
         self.error = None
         try:
             self._dispatch(key)
-        except (StackError, CalcError) as exc:
+        except (StackError, CalcError, FinanceError) as exc:
             self.error = str(exc)
 
     def _dispatch(self, key: str) -> None:
@@ -180,6 +200,12 @@ class RpnEngine:
             self._handle_clear()
         elif key == "undo":
             self._handle_undo()
+        elif key in self._FINANCE_COMMANDS:
+            store = self.command_line is not None or self._finance_store_pending
+            self._undo_snapshot = self.stack.to_list()
+            self._commit_entry()
+            self._apply_finance(key, store=store)
+            self._finance_store_pending = False
         else:
             # Every operator, function, and stack command: implicit ENTER of
             # any open command line first, then apply. This is the one rule
@@ -189,6 +215,7 @@ class RpnEngine:
             # and UNDO has to take that back too.
             self._undo_snapshot = self.stack.to_list()
             self._commit_entry()
+            self._finance_store_pending = False
             self._apply_command(key)
 
     # -- the interactive stack -----------------------------------------------
@@ -308,6 +335,7 @@ class RpnEngine:
     # -- command-line editing ------------------------------------------------
 
     def _handle_entry_key(self, key: str) -> None:
+        self._finance_store_pending = True
         if self.command_line is None:
             if key == "eex":
                 # Judgment call: the 50g defaults the mantissa to 1 when EEX
@@ -335,6 +363,7 @@ class RpnEngine:
         snapshot = self.stack.to_list()
         if self.command_line is not None:
             self._commit_entry()
+            self._finance_store_pending = True
         else:
             self.stack.dup()  # ENTER on an empty command line: DUP level 1
         self._undo_snapshot = snapshot
@@ -366,11 +395,13 @@ class RpnEngine:
         """CLEAR empties the stack, as right-shift CLEAR does on the 50g."""
         self._undo_snapshot = self.stack.to_list()
         self.command_line = None
+        self._finance_store_pending = False
         self.stack.clear()
 
     def _handle_clear_entry(self) -> None:
         """CANCEL/DEL: abandon what is being typed, leave the stack alone."""
         self.command_line = None
+        self._finance_store_pending = False
 
     def _handle_undo(self) -> None:
         if self._undo_snapshot is None:
@@ -379,6 +410,7 @@ class RpnEngine:
         for value in reversed(self._undo_snapshot):  # to_list() is level-1-first
             self.stack.push(value)
         self._undo_snapshot = None  # single-level UNDO, like the 50g's UNDO key
+        self._finance_store_pending = False
 
     def paste_value(self, value: float) -> None:
         """Adopt a pasted number as a new level 1, as if it had been entered."""
@@ -387,6 +419,7 @@ class RpnEngine:
         self._undo_snapshot = self.stack.to_list()
         self.command_line = None
         self.stack.push(value)
+        self._finance_store_pending = True
 
     def copy_text(self) -> str:
         """What Ctrl+C should take: whatever the eye is on."""
@@ -411,6 +444,107 @@ class RpnEngine:
 
     # -- operators, functions, stack commands --------------------------------
 
+    def finance_move(self, direction: str) -> None:
+        """Move the FINANCE screen cursor; wraps at both ends."""
+        n = len(self._FINANCE_FIELDS)
+        if direction == "up":
+            self.finance_cursor = (self.finance_cursor - 1) % n
+        elif direction == "down":
+            self.finance_cursor = (self.finance_cursor + 1) % n
+
+    def finance_menu(self, index: int) -> None:
+        """Soft keys on the FINANCE screen: EDIT / AMOR / SOLVE."""
+        self.error = None
+        try:
+            field = self._FINANCE_FIELDS[self.finance_cursor]
+            if index == 0:  # EDIT — pull level 1 into the selected register
+                if field == "begin":
+                    self.finance.begin = not self.finance.begin
+                    return
+                if self.stack.depth < 1:
+                    raise StackError("Too Few Arguments")
+                self._store_finance_field(field, self.stack.peek(1))
+            elif index == 2:  # SOLVE
+                if field == "begin":
+                    self.finance.begin = not self.finance.begin
+                    return
+                if field == "pyr":
+                    return
+                self.stack.push(self._solve_finance_field(field))
+            # index 1 AMOR is intentionally inert (dimmed in the UI)
+        except (StackError, CalcError, FinanceError) as exc:
+            self.error = str(exc)
+
+    def _store_finance_field(self, field: str, value: float) -> None:
+        if field == "n":
+            self.finance.n = value
+        elif field == "i_yr":
+            self.finance.i_yr = value
+        elif field == "pv":
+            self.finance.pv = value
+        elif field == "pmt":
+            self.finance.pmt = value
+        elif field == "fv":
+            self.finance.fv = value
+        elif field == "pyr":
+            if value == 0:
+                raise FinanceError("Compound Interest Error")
+            self.finance.pyr = value
+
+    def _solve_finance_field(self, field: str) -> float:
+        if field == "n":
+            return self.finance.solve_n()
+        if field == "i_yr":
+            self.finance.solve_i()
+            return self.finance.i_yr
+        if field == "pv":
+            return self.finance.solve_pv()
+        if field == "pmt":
+            return self.finance.solve_pmt()
+        if field == "fv":
+            return self.finance.solve_fv()
+        raise FinanceError("Compound Interest Error")
+
+    def _apply_finance(self, key: str, *, store: bool) -> None:
+        """12C-style register keys: store after a fresh entry, else solve."""
+        store_keys = {
+            "fin_n": "n", "fin_i": "i", "fin_pv": "pv",
+            "fin_pmt": "pmt", "fin_fv": "fv",
+        }
+        if key in store_keys:
+            name = store_keys[key]
+            if store:
+                if self.stack.depth < 1:
+                    raise StackError("Too Few Arguments")
+                setattr(self.finance, name, self.stack.peek(1))
+            else:
+                solver = getattr(self.finance, f"solve_{name}")
+                self.stack.push(solver())
+            return
+        if key == "fin_cfo":
+            if self.stack.depth < 1:
+                raise StackError("Too Few Arguments")
+            self.finance.set_cfo(self.stack.peek(1))
+            return
+        if key == "fin_cfj":
+            if self.stack.depth < 1:
+                raise StackError("Too Few Arguments")
+            self.finance.add_cfj(self.stack.peek(1))
+            return
+        if key == "fin_nj":
+            if self.stack.depth < 1:
+                raise StackError("Too Few Arguments")
+            times = int(self.stack.peek(1))
+            self.finance.set_nj(times)
+            return
+        if key == "fin_npv":
+            self.stack.push(self.finance.npv())
+            return
+        if key == "fin_irr":
+            self.stack.push(self.finance.irr())
+            return
+        raise ValueError(f"unknown finance key: {key!r}")
+
     def _apply_command(self, key: str) -> None:
         if key in self._UNARY_METHODS:
             self._apply_unary(getattr(self, self._UNARY_METHODS[key]))
@@ -418,6 +552,10 @@ class RpnEngine:
             self._apply_binary(getattr(self, self._BINARY_METHODS[key]))
         elif key == "pi":
             self.stack.push(math.pi)
+        elif key == "e":
+            self.stack.push(math.e)
+        elif key == "sum_plus":
+            self._fn_sum_plus()
         elif key == "drop":
             self.stack.drop()
         elif key == "swap":
@@ -486,6 +624,32 @@ class RpnEngine:
     def _fn_percent(self, base: float, pct: float) -> float:
         """HP's %: level 2 times level 1 percent, consuming both operands."""
         return base * pct / 100.0
+
+    def _fn_delta_percent(self, y: float, x: float) -> float:
+        """12C Δ%: percent change from y to x."""
+        if y == 0:
+            raise CalcError("Infinite Result")
+        return (x - y) / y * 100.0
+
+    def _fn_fact(self, x: float) -> float:
+        if x < 0 or not float(x).is_integer() or x > 170:
+            raise CalcError("Invalid Input")
+        return float(math.factorial(int(x)))
+
+    def _fn_sum_plus(self) -> None:
+        """Σ+: accumulate (y, x), leave n in level 1."""
+        if self.stack.depth < 1:
+            raise StackError("Too Few Arguments")
+        x = self.stack.peek(1)
+        y = self.stack.peek(2) if self.stack.depth >= 2 else 0.0
+        self._stats_n += 1
+        self._stats_sx += x
+        self._stats_sy += y
+        self.stack.pop()
+        if self.stack.depth >= 1:
+            self.stack.pop()
+        self.stack.push(float(self._stats_n))
+
     def _roll(self) -> None:
         self._reorder_with_count(self.stack.roll)
 
