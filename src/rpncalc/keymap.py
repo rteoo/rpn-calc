@@ -56,7 +56,7 @@ def _k(*args, **kwargs) -> Key:
 # the left_ or right_ slot purely for where they are drawn above the cap.
 KEY_ROWS: tuple[tuple[Key, ...], ...] = (
     (
-        _k("menu", "MENU", "up"),
+        _k("menu", "MENU", "settings"),
         _k("up", "", "up", right_label="FINANCE", right_action="finance", style="nav"),
         _k("down", "", "down", right_label="CUT", right_action="cut", style="nav"),
         _k("left", "", "left", right_label="COPY", right_action="copy", style="nav"),

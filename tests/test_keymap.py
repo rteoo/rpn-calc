@@ -131,7 +131,7 @@ class TestKeymapEngineContract:
         engine = RpnEngine()
         # Clipboard and the FINANCE screen toggle live on the backend, not
         # the pure engine — the contract accepts those as resolved elsewhere.
-        backend_only = {"copy", "cut", "paste", "finance", "shift"}
+        backend_only = {"copy", "cut", "paste", "finance", "settings", "shift"}
         bound = {
             action
             for key in KEYS_BY_ID.values()

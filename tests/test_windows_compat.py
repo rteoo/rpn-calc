@@ -102,16 +102,19 @@ def test_launchkey_stays_winreg_and_pythonw():
         assert not host.is_windows()
 
 
-def test_qml_keeps_windows_ctrl_shortcuts_and_right_click():
+def test_qml_keeps_windows_ctrl_shortcuts_and_settings_panel():
     qml = (ROOT / "src/rpncalc/qml/Main.qml").read_text(encoding="utf-8")
     for seq in ("Ctrl+C", "Ctrl+V", "Ctrl+Z", "Ctrl+M", "Ctrl+Q", "Ctrl+,"):
         assert f'sequence: "{seq}"' in qml
     # Qt already maps Ctrl to Command on macOS. Binding Meta as well would
     # claim Super+Q and Super+M here, which the window manager owns.
     assert "Meta+" not in qml
-    assert "enabled: backend.calculatorKeySupported" in qml
-    assert "acceptedButtons: Qt.RightButton" in qml
+    assert "SettingsView" in qml
+    assert 'backend.pressCommand("settings")' in qml
     assert "hoverEnabled: backend.hasPointerHover" in qml
+    settings = (ROOT / "src/rpncalc/qml/SettingsView.qml").read_text(encoding="utf-8")
+    assert "Launch on the calculator key" not in settings  # label comes from backend
+    assert "rowActivated" in settings
 
 
 def test_pyinstaller_spec_still_builds_a_windows_exe():

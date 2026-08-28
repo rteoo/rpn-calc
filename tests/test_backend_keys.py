@@ -211,7 +211,7 @@ class TestDisplayFormatting:
         press_commands(backend, "1 0 0 0 0 0 enter")
         backend.setThousandsSeparator(True)
         assert backend.stackLines == ["100,000"]
-        backend.pressKeyId("menu")
+        backend.pressKeyId("up")
         backend.pressMenu(0)  # ECHO
         assert backend.commandLine == "100000"
 
@@ -349,11 +349,26 @@ class TestInteractiveStack:
         assert backend.cursorLevel == 0
         assert backend.menuLabels == []
 
-    def test_the_menu_key_opens_the_browser(self, backend):
+    def test_the_up_key_opens_the_browser(self, backend):
         self.build(backend)
-        backend.pressKeyId("menu")
+        backend.pressKeyId("up")
         assert backend.cursorLevel == 1
         assert backend.menuLabels == ["ECHO", "VIEW", "EDIT", "PICK", "ROLL", "ROLLD"]
+
+    def test_the_menu_key_opens_settings(self, backend):
+        assert not backend.settingsOpen
+        backend.pressKeyId("menu")
+        assert backend.settingsOpen
+        assert backend.menuLabels == ["TOGGLE", "", "DONE"]
+        assert [row["label"] for row in backend.settingsRows] == [
+            "Use comma as decimal",
+            "Thousands separator",
+            "Launch on the calculator key",
+        ]
+        backend.pressCommand("enter")  # toggle decimal comma
+        assert backend.decimalComma is True
+        backend.pressKeyId("menu")  # closes
+        assert not backend.settingsOpen
 
     def test_the_up_key_opens_and_walks(self, backend):
         self.build(backend)
@@ -378,7 +393,7 @@ class TestInteractiveStack:
 
     def test_view_is_disabled(self, backend):
         self.build(backend)
-        backend.pressKeyId("menu")
+        backend.pressKeyId("up")
         assert backend.menuEnabled == [True, False, True, True, True, True]
         before = backend.stackLines
         backend.pressMenu(1)
@@ -392,11 +407,14 @@ class TestInteractiveStack:
 
     def test_arrows_do_nothing_in_algebraic_mode(self, backend):
         backend.toggleEntryMode()
-        for key_id in ("up", "down", "left", "right", "menu"):
+        for key_id in ("up", "down", "left", "right"):
             backend.pressKeyId(key_id)
         assert backend.cursorLevel == 0
         assert backend.menuLabels == []
         assert backend.display == "0"
+        # MENU opens settings in either mode.
+        backend.pressKeyId("menu")
+        assert backend.settingsOpen
 
     def test_switching_mode_closes_the_browser(self, backend):
         self.build(backend)
