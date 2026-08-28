@@ -11,6 +11,7 @@ are two independent implementations of the same arithmetic, so making them agree
 from __future__ import annotations
 
 import math
+import statistics
 from decimal import Decimal
 
 import pytest
@@ -416,3 +417,92 @@ class TestEntryRoundTrip:
         engine.press("enter")
         assert engine.error is None
         assert engine.stack.peek(1) == float(f"{mantissa}e{exponent}")
+
+
+class TestStatisticsAgainstTheStandardLibrary:
+    """The Σ readbacks against `statistics`, an independent implementation.
+
+    Same idea as `TestCrossEngine`: checking our mean against our own sum
+    would only prove the code calls the function it says it calls. `statistics`
+    shares no code with the engine, so agreement is two paths landing together.
+    """
+
+    @staticmethod
+    def accumulate(values):
+        engine = RpnEngine()
+        for value in values:
+            engine.stack.clear()
+            engine.stack.push(float(value))
+            engine.press("sum_plus")
+        engine.stack.clear()
+        return engine
+
+    @given(st.lists(REAL, min_size=1, max_size=30))
+    @settings(max_examples=150)
+    def test_median_matches_exactly(self, values):
+        engine = self.accumulate(values)
+        engine.press("median")
+        assert engine.stack.peek(1) == statistics.median(values)
+
+    @given(st.lists(REAL, min_size=1, max_size=30))
+    @settings(max_examples=150)
+    def test_mean_and_sum_agree_with_the_library(self, values):
+        engine = self.accumulate(values)
+        engine.press("sigma_sum")
+        assert engine.stack.peek(1) == pytest.approx(math.fsum(values), rel=1e-12)
+        engine.stack.clear()
+        engine.press("mean")
+        assert engine.stack.peek(1) == pytest.approx(
+            statistics.fmean(values), rel=1e-12, abs=1e-9
+        )
+
+    @given(st.lists(REAL, min_size=2, max_size=30))
+    @settings(max_examples=300)
+    def test_stddev_matches_the_sample_form(self, values):
+        """`statistics.stdev` works in exact rationals, so this is a real
+        oracle rather than the same float arithmetic written twice."""
+        expected = statistics.stdev(values)
+        engine = self.accumulate(values)
+        engine.press("stddev")
+        assert engine.stack.peek(1) == pytest.approx(expected, rel=1e-12, abs=1e-12)
+
+    def test_stddev_holds_up_on_a_tight_cluster_far_from_zero(self):
+        """Deterministic pin for the case a property run found once.
+
+        The mean of these is not representable, and plain two-pass carries the
+        leftover bias into the ninth digit. Kept as an example test because a
+        branch - or a bug - reached only by chance is not covered.
+        """
+        values = [733007751635.0, 733007751635.0, 733007751634.0]
+        engine = self.accumulate(values)
+        engine.press("stddev")
+        assert engine.stack.peek(1) == statistics.stdev(values)
+
+    @given(st.lists(REAL, min_size=2, max_size=20))
+    @settings(max_examples=100)
+    def test_a_shifted_sample_moves_its_centre_but_not_its_spread(self, values):
+        """Spread is translation-invariant; the naive Σx² form is not."""
+        offset = 1e6
+        plain = self.accumulate(values)
+        plain.press("stddev")
+        shifted = self.accumulate([v + offset for v in values])
+        shifted.press("stddev")
+        assert shifted.stack.peek(1) == pytest.approx(
+            plain.stack.peek(1), rel=1e-6, abs=1e-6
+        )
+
+    def test_the_two_pass_form_survives_what_the_shortcut_cannot(self):
+        """Deterministic, because this is the reason the design is what it is.
+
+        `Σx² - n·x̄²` subtracts two enormous nearly-equal numbers here; in
+        float64 it returns exactly 0.0 for a sample whose spread is exactly 1.
+        """
+        values = [1e9, 1e9 + 1, 1e9 + 2]
+        total = sum(values)
+        squares = sum(value * value for value in values)
+        shortcut = ((squares - total * total / 3) / 2) ** 0.5
+        assert shortcut == 0.0  # the form we deliberately do not use
+
+        engine = self.accumulate(values)
+        engine.press("stddev")
+        assert engine.stack.peek(1) == pytest.approx(1.0, rel=1e-12)

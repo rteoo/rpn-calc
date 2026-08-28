@@ -132,15 +132,16 @@ Other deliberate deviations:
 - trig is off the face and has no keyboard binding either; the engine keeps it
   for the tests and the oracle;
 - `Σ+` accumulates a (y, x) pair 12C-style — x from level 1, y read from level 2
-  but *not* consumed — and leaves n in level 1. **An accumulator needs its
-  readbacks on the face or it is write-only state**: shift-`+` is Σ (Σx into
-  level 1, Σy into level 2, the 12C's `RCL Σ+`), shift-`Σ+` is MEAN (the same
-  two divided by n), and shift-`ON` is CLΣ. Σ is the primary one — MEAN is Σ
-  over n, not the reverse — and shipping MEAN without it left "what do these
-  add up to" unanswerable. `x!` sits on shift-`1/X` because those three took
-  the slots. Only n, Σx and Σy are accumulated, so there is no standard
-  deviation and no linear regression; the 12C has both. The accumulator rides
-  in the UNDO snapshot, so one UNDO takes a Σ+ back whole;
+  but *not* consumed — and leaves n in level 1; shift-`Σ+` is `Σ−`, which takes
+  one back out. **An accumulator needs its readbacks on the face or it is
+  write-only state**, so the shifted operator column *is* the readback plane:
+  `+`→Σ, `−`→MEAN, `×`→MED, `÷`→STD, each landing x in level 1 and y in level 2.
+  Shift-`ON` is CLΣ, and `x!` sits on shift-`1/X` because the stats took the
+  other slots. Σ is the primary readback — MEAN is Σ over n, not the reverse.
+  Unlike a 12C, `Σ−` refuses a pair that was never accumulated rather than
+  driving the totals somewhere no data could put them. STD is the sample form
+  (n−1) and so needs two points where MEAN and MED need one. No linear
+  regression and no `Σx²`-style summary registers.
 - the soft-menu labels are themselves the buttons; `F1`–`F6` press them from the keyboard.
 
 Anything drawn rather than typeset (shift arrow, direction arrows, the backspace
@@ -276,6 +277,23 @@ Two rules for this area:
   is the number the engine actually held; the second is its shortest printed
   form. Asking what the engine should have returned for a number it never had
   produces failures that are the test's fault.
+- **The statistics keep every point, not running totals.** MEDIAN cannot be
+  recovered from any set of sums, so `_stats` is a list of (x, y) pairs — which
+  also buys STD a much better algorithm. Three forms, worst first: `Σx² - n·x̄²`
+  returns **exactly 0.0** for `1e9, 1e9+1, 1e9+2`, whose spread is 1; plain
+  two-pass drifts in the ninth digit on a tight cluster far from zero, because
+  the mean itself is not representable; the **corrected** two-pass used here
+  subtracts `fsum(deviations)²/n`, cancelling that bias, and matches
+  `statistics.stdev` — exact rationals — to the last bit. `tests/
+  test_core_properties.py::TestStatisticsAgainstTheStandardLibrary` is the
+  oracle, and the tight-cluster case a property run found once is pinned as an
+  example test beside it.
+- **Summarising a sample can overflow, so the readbacks go through
+  `_evaluate`** like every other function. An `OverflowError` out of a Σ near
+  the float ceiling is not one of the exceptions `press` catches — it would
+  take the window down instead of showing `Infinite Result`. For the same
+  reason `_median` halves the two middles *before* adding them: `(a + b) / 2`
+  overflows for a median that is simply one of the numbers entered.
 - **Display rounding is half away from zero**, explicitly, in `numeric._quantise`.
   Python and IEEE round half to even, which is right for sums and wrong for a
   display - a calculator shows 2.5 as 3. The three formats disagreed about this
