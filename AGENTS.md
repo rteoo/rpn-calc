@@ -149,8 +149,29 @@ Other deliberate deviations:
 - the soft-menu labels are themselves the buttons; `F1`–`F6` press them from the keyboard.
 
 Anything drawn rather than typeset (shift arrow, direction arrows, the backspace
-icon, the stack cursor) is drawn because iA Writer Mono has no glyph for it. Check
-before adding a symbol to a cap — the font is missing more than you would expect.
+icon, the stack cursor, **Σ and Δ**) is drawn because iA Writer Mono has no glyph
+for it. Check before adding a symbol to a cap — the font is missing more than you
+would expect: **the whole Greek alphabet except π, and every superscript.**
+
+`CapText.qml` owns all three caption paths, and a caption uses exactly one:
+- **drawn** — Σ and Δ, per character, on a Canvas. Only reasonable because the
+  face is monospaced, so every cell is one advance wide.
+- **rich text** — `y<sup>x</sup>`, `e<sup>x</sup>`, `10<sup>x</sup>`, which
+  raise the font's own `x` since U+02E3 is not there. Two traps: the cap
+  auto-sizes by dividing its width by the caption's *length*, so it must
+  measure the tag-stripped text or a superscript cap comes out a fifth the
+  size of its neighbours; and **Qt cannot elide rich text**, so asking it to
+  silently truncated `eˣ` to a bare `e`.
+- **plain text** — everything else, the cheap path.
+
+**A missing glyph does not raise. It draws an empty box**, which no headless
+test notices — `Σ+` reached a real desktop reading `▯+`, and `Δ%` as `▯%`.
+`tests/test_startup.py::TestKeycapLabels` renders the real face and fails on
+any caption whose glyphs the font lacks and `CapText` does not draw; it reads
+the drawn list off a live `CapText` rather than restating it, because a copy
+would keep passing after the drawing stopped. **Canvas paints are deferred** —
+one `processEvents` renders the face with every Σ missing, which looks
+convincing and is a lie; the fixture pumps eight.
 
 ## The keyboard's calculator key
 

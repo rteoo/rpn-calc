@@ -64,14 +64,14 @@ KEY_ROWS: tuple[tuple[Key, ...], ...] = (
     ),
     (
         _k("undo", "UNDO", "undo", left_label="PASTE", left_action="paste"),
-        _k("eex", "EEX", "eex", right_label="10^x", right_action="alog"),
+        _k("eex", "EEX", "eex", right_label="10<sup>x</sup>", right_action="alog"),
         _k("n", "n", "fin_n", right_label="Nj", right_action="fin_nj"),
         _k("i", "i", "fin_i", right_label="IRR", right_action="fin_irr"),
         _k("backspace", "\u2190", "backspace", right_label="CLEAR", right_action="clear"),
     ),
     (
         _k("sqrt", "\u221ax", "sqrt", left_label="y\u221ax", left_action="xroot"),
-        _k("pow", "y^x", "pow", left_label="e^x", left_action="exp"),
+        _k("pow", "y<sup>x</sup>", "pow", left_label="e<sup>x</sup>", left_action="exp"),
         _k("pv", "PV", "fin_pv", right_label="NPV", right_action="fin_npv"),
         _k("pmt", "PMT", "fin_pmt", right_label="CFo", right_action="fin_cfo"),
         _k("fv", "FV", "fin_fv", right_label="CFj", right_action="fin_cfj"),
