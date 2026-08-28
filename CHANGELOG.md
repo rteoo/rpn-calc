@@ -8,6 +8,35 @@ Each version links to its release. 0.2.0 and 0.2.1 were bumped but never
 tagged, so their changes first reached users in 0.3.0; they link to the commit
 that carried them instead.
 
+## [0.5.0] - 2026-08-27
+
+### Added
+
+- **A finance-centred faceplate.** One yellow shift plane (no white left-shift,
+  no ALPHA), HP 12C-style `n` / `i` / `PV` / `PMT` / `FV` keys with store-vs-solve,
+  cash-flow keys (`CFo` / `CFj` / `Nj` / `NPV` / `IRR`), and a wide ENTER.
+  Shift-FINANCE opens a 50g-style TVM form (N, I%YR, PV, PMT, FV, P/YR,
+  Begin/End) with EDIT / AMOR / SOLVE; the form owns the keyboard while it is
+  showing. Math lives in `finance.py`, read against the HP-12C closed forms and
+  [finanx-12c](https://github.com/fabiolimace/finanx-12c).
+- **Σ+ / MEAN / CLΣ.** Σ+ accumulates a (y, x) pair 12C-style — x from level 1,
+  y read from level 2 but not consumed — and leaves n in level 1. Shift-`1/X` is
+  MEAN; shift-`ON` is CLΣ. The accumulator rides in the UNDO snapshot.
+- **Display locale toggles** in the settings menu: **Use comma as decimal** and
+  **Thousands separator**. Formatting applies at the display boundary; the
+  command line and ECHO / EDIT stay canonical.
+
+### Fixed
+
+- **`rate()` returns the interest rate it found**, not the bisection upper
+  bound, and refuses indeterminate problems (a single Begin-mode period with
+  no balloon, and the all-zero case) instead of reporting 99999%.
+
+### Changed
+
+- Trig is off the faceplate (still in the engine for tests). `MENU` opens the
+  interactive stack browser. CI cancels superseded test runs on the same ref.
+
 ## [0.4.0] - 2026-08-25
 
 ### Changed
@@ -158,6 +187,7 @@ First release. An HP 50g-style RPN calculator wearing omacalc's face.
 - Errors never mutate the stack: `1 ENTER 0 ÷` reports `Infinite Result` with
   both operands still present.
 
+[0.5.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.5.0
 [0.4.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.4.0
 [0.3.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.3.0
 [0.2.1]: https://github.com/rteoo/rpn-calc/commit/53ddda1

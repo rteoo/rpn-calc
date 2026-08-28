@@ -4,7 +4,8 @@ An HP 50g-style RPN calculator wearing [omacalc](https://github.com/omacom-io/om
 
 RPN is the default input method: a real command line, `ENTER`, and an unbounded stack with
 full stack control. Algebraic mode is kept behind a toggle, exactly as the real 50g keeps it
-under `MODE`. The keyboard is the 50g's lower block, shift planes and all.
+under `MODE`. The face is our own layout — one yellow shift, 12C-style finance keys, and a
+wide ENTER — with the interactive stack and a 50g-style FINANCE form on top.
 
 ## Download
 
@@ -43,11 +44,20 @@ command line opens; `ENTER` pushes it. With nothing typed, `ENTER` duplicates le
 
 ```
 5 ENTER 3 ENTER 2 + ×     →  25
-16 ENTER  ←shift √x       →  256      (left shift on the root key is x squared)
+5 ENTER x²                →  25
 81 ENTER √x               →  9
 200 ENTER 10 %            →  20
+36 n  1 i  10000 PV  0 FV  PMT   →  about -332.14   (12C store / solve)
 1 ENTER 0 ÷               →  "Infinite Result", both operands still on the stack
 ```
+
+### Finance
+
+Direct keys follow the 12C: enter a value and press `n` / `i` / `PV` / `PMT` /
+`FV` to store; press the same key with no new entry to solve for it. Shifted
+`NPV` / `IRR` / `CFo` / `CFj` / `Nj` handle cash flows. Shift-FINANCE opens the
+50g TVM form; while it is open it owns the keyboard, and soft-menu EDIT / SOLVE
+work the selected register (AMOR is declared unimplemented and dimmed).
 
 ### The interactive stack
 
@@ -55,7 +65,7 @@ With the browser closed, the horizontal arrows are stack commands: **`▶` swaps
 levels 1 and 2**, and **`◀` rotates the top three** so level 3 comes down to
 level 1. Neither opens the browser.
 
-Press `▲` (or `STK`) to open the 50g's stack browser. A cursor walks the levels and the
+Press `▲` (or `MENU`) to open the 50g's stack browser. A cursor walks the levels and the
 soft menu acts on the one it sits on — the fastest way to reorganise a deep stack.
 
 | | |
@@ -72,11 +82,11 @@ soft menu acts on the one it sits on — the fastest way to reorganise a deep st
 The soft-menu labels are buttons; `F1`–`F6` press them from the keyboard. While the
 browser is open it owns the keyboard, so a stray digit cannot disturb the stack.
 
-### Shift planes
+### Shift
 
-The left shift is white, the right shift is orange, same as the faceplate. A shift arms for
-exactly one key; pressing it twice cancels, pressing the other one switches. The armed plane
-brightens on the face so you can read the next key rather than remember it.
+One yellow shift plane. It arms for exactly one key; pressing it twice cancels.
+Armed legends brighten on the face so you can read the next key rather than
+remember it.
 
 ### Keyboard
 
@@ -169,16 +179,17 @@ pytest                                          # the whole suite, headless
 python tools/verify_core.py                     # + a 100% gate on the core
 ```
 
-1513 tests, no display needed. The calculation core — number formatting, the
-stack, and both engines — is held at **100% statement and branch coverage**, and
-its answers are checked against an independent 50-digit decimal implementation
-rather than against the same `math` functions it calls.
+1783 tests, no display needed. The calculation core — number formatting, the
+stack, both engines, the keymap, and finance — is held at **100% statement and
+branch coverage**, and its answers are checked against an independent 50-digit
+decimal implementation rather than against the same `math` functions it calls.
 
 ## What it does not do
 
-No CAS, soft menus, ALPHA entry, symbolic variables, units, complex numbers, or matrices.
-Keys with no meaning here keep their real legend and render dimmed rather than lying about
-being live. If you need those, the real 50g emulator is still the answer.
+No CAS, ALPHA entry, symbolic variables, units, complex numbers, or matrices.
+Soft-menu AMOR on the FINANCE screen is unimplemented and dimmed. Trig lives in
+the engine but is off the faceplate. If you need a full 50g, the real emulator
+is still the answer.
 
 ## Changelog
 
@@ -187,6 +198,7 @@ Release history is in [CHANGELOG.md](CHANGELOG.md).
 ## Credits
 
 - UI, theming, and the algebraic engine derive from **omacalc** by David Heinemeier Hansson (MIT).
+- TVM / cash-flow closed forms were cross-checked against **finanx-12c** by Fabio Lima (MIT).
 - **iA Writer Mono S** is bundled under the SIL Open Font License 1.1 (`src/rpncalc/fonts/OFL.txt`).
-- Key geometry and legends were read off an Emu48 HP 50g faceplate. No HP ROM images are
-  distributed with this project.
+- Face spacing still borrows ideas from an Emu48 HP 50g layout; the legends are our own.
+  No HP ROM images are distributed with this project.
