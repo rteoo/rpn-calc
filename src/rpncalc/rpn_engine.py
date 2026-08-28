@@ -937,8 +937,15 @@ class RpnEngine:
             raise CalcError("Undefined Result" if a == 0 else "Infinite Result")
         return a / b
 
-    def _fn_xroot(self, value: float, degree: float) -> float:
-        """XROOT: the `degree`-th root of `value`, level 2 rooted by level 1."""
+    def _fn_xroot(self, degree: float, value: float) -> float:
+        """`y√x`: the level-2-th root of level 1 - index in y, radicand in x.
+
+        The operand order is the label's, read left to right, which is how
+        `y^x` on the same face already reads: y is level 2, x is level 1. A
+        real 50g's XROOT takes them the other way round (radicand in level 2,
+        index in level 1), and its `ⁿ√y` legend spells the stack backwards.
+        Matching the label was worth breaking with the 50g here.
+        """
         if degree == 0:
             raise CalcError("Infinite Result")
         if value < 0 and float(degree).is_integer() and int(degree) % 2 == 1:

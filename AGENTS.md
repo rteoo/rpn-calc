@@ -126,6 +126,10 @@ Finance shows up in two places:
   On the Begin/End row there is nothing to type, so ENTER toggles it.
 
 Other deliberate deviations:
+- **`y√x` reads the stack left to right**, index in level 2 and radicand in
+  level 1, the same way the `y^x` cap beside it does. A real 50g's XROOT takes
+  them the other way round and legends it `ⁿ√y`, which spells the stack
+  backwards; matching the label was worth the deviation. `3 ENTER 27` is 3;
 - `MENU` opens the on-screen SETTINGS panel; `▲` opens the interactive stack browser;
 - `ON` cancels the command line; shift-`←` is CLEAR (empty the stack);
 - ENTER spans two columns; there is no SPC key on the face (keyboard Space still works);

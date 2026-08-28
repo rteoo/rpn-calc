@@ -83,6 +83,9 @@ class TestShiftPlanes:
         assert KEYS_BY_ID["up"].right_label == "FINANCE"
         assert KEYS_BY_ID["pow"].left_action == "exp"
         assert KEYS_BY_ID["sqrt"].left_action == "xroot"
+        # y√x, not ⁿ√y: the legend spells the stack
+        # left to right, level 2 then level 1, the same way y^x beside it does.
+        assert KEYS_BY_ID["sqrt"].left_label == "y√x"
         assert KEYS_BY_ID["eex"].right_action == "alog"
         assert KEYS_BY_ID["backspace"].right_label == "CLEAR"
 

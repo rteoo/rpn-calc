@@ -70,7 +70,7 @@ KEY_ROWS: tuple[tuple[Key, ...], ...] = (
         _k("backspace", "\u2190", "backspace", right_label="CLEAR", right_action="clear"),
     ),
     (
-        _k("sqrt", "\u221ax", "sqrt", left_label="\u207f\u221ay", left_action="xroot"),
+        _k("sqrt", "\u221ax", "sqrt", left_label="y\u221ax", left_action="xroot"),
         _k("pow", "y^x", "pow", left_label="e^x", left_action="exp"),
         _k("pv", "PV", "fin_pv", right_label="NPV", right_action="fin_npv"),
         _k("pmt", "PMT", "fin_pmt", right_label="CFo", right_action="fin_cfo"),
