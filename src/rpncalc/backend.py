@@ -39,6 +39,10 @@ _RPN_MODE_SETTING = "mode/rpn"
 _ANGLE_MODE_SETTING = "mode/angle"
 _FORMAT_MODE_SETTING = "mode/format"
 _FORMAT_DIGITS_SETTING = "mode/formatDigits"
+
+# The SETTINGS panel's display-precision ladder: STD, then FIX 0 to FIX 11.
+# `None` is STD, which `NumberFormat` spells as a mode rather than a count.
+_DIGIT_LADDER: tuple[int | None, ...] = (None, *range(12))
 _DECIMAL_COMMA_SETTING = "display/decimalComma"
 _THOUSANDS_SETTING = "display/thousandsSeparator"
 
@@ -486,20 +490,38 @@ class Backend(QObject):
         return [
             {
                 "id": "decimal",
+                "kind": "toggle",
                 "label": "Use comma as decimal",
                 "checked": self._decimal_comma,
+                "value": "",
                 "enabled": True,
             },
             {
                 "id": "thousands",
+                "kind": "toggle",
                 "label": "Thousands separator",
                 "checked": self._thousands_separator,
+                "value": "",
+                "enabled": True,
+            },
+            {
+                "id": "digits",
+                # Not a checkbox: it walks a ladder of settings rather than
+                # having two states. ENTER steps it forward, ◀ and ▶ either way.
+                "kind": "value",
+                "label": "Decimal digits",
+                "checked": False,
+                # The status bar's own words, so the panel and the bar cannot
+                # disagree about what the display is doing.
+                "value": self._rpn.number_format.label(),
                 "enabled": True,
             },
             {
                 "id": "launchkey",
+                "kind": "toggle",
                 "label": "Launch on the calculator key",
                 "checked": launchkey.is_bound(),
+                "value": "",
                 "enabled": launchkey.supported(),
             },
         ]
@@ -613,6 +635,12 @@ class Backend(QObject):
         elif command == "enter":
             self._toggle_settings_item()
             return
+        elif command in ("left", "right"):
+            rows = self._settings_rows()
+            row = rows[self._settings_cursor]
+            if row["kind"] != "value" or not row["enabled"]:
+                return  # nothing to step; a toggle needs ENTER
+            self._step_digits(1 if command == "right" else -1)
         elif command in ("clear_entry", "settings"):
             self._settings_open = False
         else:
@@ -631,9 +659,28 @@ class Backend(QObject):
             self.setDecimalComma(not self._decimal_comma)
         elif row["id"] == "thousands":
             self.setThousandsSeparator(not self._thousands_separator)
+        elif row["id"] == "digits":
+            self._step_digits(1)
         elif row["id"] == "launchkey":
             self.setCalculatorKeyBound(not launchkey.is_bound())
         self.settingsChanged.emit()
+
+    def _step_digits(self, delta: int) -> None:
+        """Walk the display-precision ladder: STD, then FIX 0 through FIX 11.
+
+        STD is one end of the same ladder rather than a separate mode, because
+        "as many decimals as it takes" is the answer to the same question the
+        other twelve settings answer. SCI and ENG are not on it - nothing on
+        the face reaches them - so stepping from one lands in FIX.
+        """
+        fmt = self._rpn.number_format
+        rungs = len(_DIGIT_LADDER)
+        index = 0 if fmt.mode == STD else _DIGIT_LADDER.index(fmt.digits)
+        digits = _DIGIT_LADDER[(index + delta) % rungs]
+        if digits is None:
+            self.setNumberFormat(STD, fmt.digits)
+        else:
+            self.setNumberFormat(FIX, digits)
 
     @Slot(int)
     def activateSettingsRow(self, index: int) -> None:

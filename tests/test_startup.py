@@ -932,3 +932,95 @@ class TestKeycapLabels:
             assert not raw.supportsCharacter(ord(glyph)), (
                 f"{glyph!r} is in the font now; draw it as text instead"
             )
+
+
+class TestSettingsPanelLayout:
+    """The SETTINGS panel's geometry, measured off the rendered window.
+
+    Third panel in this file to need it. The display panels have `clip: true`
+    and no slack, so a row too many is sliced rather than reported: adding the
+    decimal-digits row pushed the hint line 14px past the bottom, and nothing
+    below the Qt layer could see it.
+    """
+
+    def panel(self, started, app):
+        from PySide6.QtCore import QObject
+
+        started.window.setProperty("width", 420)
+        started.window.setProperty("height", 820)
+        started.backend.pressCommand("settings")
+        for _ in range(8):
+            app.processEvents()
+        view = next(
+            child for child in started.window.findChildren(QObject)
+            if child.metaObject().className().startswith("SettingsView")
+        )
+        assert view.property("visible"), "the SETTINGS panel did not open"
+        return view
+
+    @staticmethod
+    def column(view):
+        from PySide6.QtCore import QObject
+
+        return next(
+            child for child in view.findChildren(QObject)
+            if child.metaObject().className() == "QQuickColumnLayout"
+        )
+
+    @staticmethod
+    def texts(view):
+        from PySide6.QtCore import QObject
+
+        return [
+            child for child in view.findChildren(QObject)
+            if child.metaObject().className().startswith("QQuickText")
+            and child.property("text")
+        ]
+
+    def test_the_panel_fits_the_space_it_is_given(self, started, qt_app):
+        view = self.panel(started, qt_app)
+        column = self.column(view)
+        assert column.property("implicitHeight") <= view.property("height"), (
+            f"the panel needs {column.property('implicitHeight'):.0f}px of "
+            f"{view.property('height'):.0f} - clip: true is cutting it"
+        )
+
+    def test_it_draws_a_row_for_every_setting_the_backend_offers(
+        self, started, qt_app
+    ):
+        """The rows are written out one by one rather than repeated, so the
+        two lists can drift; a backend row with no QML row is invisible."""
+        view = self.panel(started, qt_app)
+        from PySide6.QtCore import QObject
+
+        rendered = [
+            child for child in view.findChildren(QObject)
+            if child.metaObject().className().startswith("SettingsRow")
+        ]
+        assert len(rendered) == len(started.backend.settingsRows)
+
+    def test_the_hint_line_is_drawn_in_full(self, started, qt_app):
+        view = self.panel(started, qt_app)
+        hint = next(
+            t for t in self.texts(view) if "MENU closes" in t.property("text")
+        )
+        bottom = hint.mapToItem(view, 0, hint.property("height")).y()
+        assert bottom <= view.property("height") + 0.5, (
+            "the hint line runs past the bottom of the panel and is clipped"
+        )
+
+    def test_no_panel_text_asks_for_a_glyph_the_font_lacks(self, started, qt_app):
+        """The arrows are drawn on the keycaps precisely because ◀ and ▶ are
+        not in iA Writer Mono; spelling them into a hint brings the boxes back."""
+        from PySide6.QtGui import QFont, QRawFont
+
+        view = self.panel(started, qt_app)
+        raw = QRawFont.fromFont(QFont("iA Writer Mono S", 20))
+        missing = set()
+        for text in self.texts(view):
+            for char in text.property("text"):
+                if char != " " and not raw.supportsCharacter(ord(char)):
+                    missing.add(char)
+        assert not missing, (
+            f"the SETTINGS panel would draw empty boxes for {sorted(missing)}"
+        )
