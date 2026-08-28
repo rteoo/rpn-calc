@@ -34,6 +34,7 @@ to a temp directory.
 | `rpn_engine.py` | The command line, dispatch, and the scientific functions. |
 | `alg_engine.py` | Port of omacalc's infix token machinery. |
 | `keymap.py` | The faceplate as data, plus the shift state machine. |
+| `finance.py` | TVM and cash-flow math (12C closed forms + NPV/IRR). |
 | `backend.py` | The **only** Qt-aware engine file; the QML context property `backend`. |
 | `host.py` | Which OS this is (Windows / macOS / iOS / Linux). Stdlib only. |
 | `systemtheme.py` | Dark mode (Qt `colorScheme`, Windows registry fallback) and text scale. |
@@ -94,25 +95,49 @@ of the real calculator, not recalled:
 
 ## Faceplate
 
-Geometry comes from `HP 50g/50G.kml`; legends were transcribed from `HP 50g/50G.bmp`.
-**Transcribe, never recall** — the shift planes are the easiest thing to get wrong. On the
-50g the left shift is **white** and the right shift is **orange** (purple/green is the 48
-series).
+The face is our own layout: a single **yellow** shift plane (no white left-shift, no
+ALPHA), HP 12C-style finance keys on the body, and a wide ENTER. Geometry still borrows
+spacing ideas from `HP 50g/50G.kml`, but the legends are not a 50g transcription.
 
 `tests/test_keymap.py::TestKeymapEngineContract` asserts every bound legend reaches a
-command the engine implements. The keyboard and the engine were built separately; that is
-the seam where a key looks live and does nothing.
+command the engine or backend implements. The keyboard and the engine were built
+separately; that is the seam where a key looks live and does nothing.
 
-Deliberate deviations, all forced by the reduced feature set:
-- the `X` key carries the stack commands (SWAP / ROT / OVER) the 50g keeps in its STACK menu;
-- left-shift `DEL` clears the command line rather than editing text;
-- the navigation row (`STK ▲ ▼ ◀ ▶`) is flattened into one row; the 50g keeps these
-  as a cluster beside APPS/MODE/TOOL, none of which are on this face. `STK` is ours;
-- the soft-menu labels are themselves the buttons, drawn at the bottom of the display.
-  The 50g labels them on-screen with six unlabelled keys beneath; there is no room for
-  another key row here. `F1`–`F6` press them from the keyboard.
+Finance shows up in two places:
+- **Direct keys** (`n`, `i`, `PV`, `PMT`, `FV`, plus shifted `Nj` / `IRR` / `NPV` /
+  `CFo` / `CFj`) follow 12C store-vs-solve: a fresh entry stores into the register;
+  pressing the key with no new entry solves for it. Math lives in `finance.py`, read
+  against [finanx-12c](https://github.com/fabiolimace/finanx-12c) and the HP-12C guide.
+  **`rate()` bisects, so it has to return the mid it converged on, not a bound,
+  and it has to refuse a problem it cannot solve.** A single Begin-mode period
+  with no balloon pays back exactly the principal whatever the interest — the
+  annuity-due factor cancels the discount — so no rate can be recovered; the
+  all-zero problem is flat for the same reason. Both used to "converge" on the
+  99999 upper bound and report it as an interest rate, silently. `rate()` now
+  probes two rates for a flat payment first and raises instead.
+- **Shift-FINANCE** opens a 50g-style TVM form (N, I%YR, PV, PMT, FV, P/YR, Begin/End)
+  with soft keys EDIT / AMOR / SOLVE. AMOR is declared unimplemented and dimmed.
+  **The form owns the keyboard while it is showing**, the way the interactive
+  stack browser does, and for the same reason: it hides the stack view, so a key
+  it let through would rearrange a stack nobody can see. It answers the arrows,
+  the entry keys, ENTER and ON, and swallows everything else. Entry reuses the
+  ordinary command line — the form draws it, because the stack view that would
+  normally show it is hidden — and ENTER stores it into the selected register.
+  On the Begin/End row there is nothing to type, so ENTER toggles it.
 
-Anything drawn rather than typeset (shift arrows, direction arrows, the backspace
+Other deliberate deviations:
+- `MENU` opens the interactive stack browser (same as `▲`);
+- `ON` cancels the command line; shift-`←` is CLEAR (empty the stack);
+- ENTER spans two columns; there is no SPC key on the face (keyboard Space still works);
+- trig is off the face and has no keyboard binding either; the engine keeps it
+  for the tests and the oracle;
+- `Σ+` accumulates a (y, x) pair 12C-style — x from level 1, y read from level 2
+  but *not* consumed — and leaves n in level 1. Shift-`1/X` is MEAN (x̄ into
+  level 1, ȳ into level 2) and shift-`ON` is CLΣ. The accumulator rides in the
+  UNDO snapshot, so one UNDO takes a Σ+ back whole;
+- the soft-menu labels are themselves the buttons; `F1`–`F6` press them from the keyboard.
+
+Anything drawn rather than typeset (shift arrow, direction arrows, the backspace
 icon, the stack cursor) is drawn because iA Writer Mono has no glyph for it. Check
 before adding a symbol to a cap — the font is missing more than you would expect.
 
@@ -202,9 +227,9 @@ already recognises `sys.platform == "ios"` (PEP 730) and the older BeeWare
 
 ## Known gaps
 
-No CAS, no soft menus (F1–F6), no ALPHA entry, no symbolic variables, no units, no complex
-numbers, no matrices, no equation writer. `EVAL`, `'`, `SYMB`, and
-`ALPHA` keep their real legends and are rendered dimmed rather than stubbed.
+No CAS, no ALPHA entry, no symbolic variables, no units, no complex numbers, no matrices,
+no equation writer. Soft-menu AMOR on the FINANCE screen is declared unimplemented and
+dimmed. Trig lives in the engine but is off the faceplate.
 
 ## Validating the calculation core
 
@@ -213,8 +238,8 @@ python tools/verify_core.py
 ```
 
 Runs the suite under branch coverage and **fails if `numeric.py`, `stack.py`,
-`rpn_engine.py`, `alg_engine.py` or `keymap.py` drops below 100% of statements
-and branches.** The Qt layer is reported but not gated.
+`rpn_engine.py`, `alg_engine.py`, `keymap.py` or `finance.py` drops below 100% of
+statements and branches.** The Qt layer is reported but not gated.
 
 **A branch covered only because a property test happened to generate the right
 sequence is not covered.** Hypothesis explores differently each run, so any

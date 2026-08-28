@@ -16,6 +16,7 @@ from PySide6.QtCore import QRect, QSettings
 from PySide6.QtGui import QFontDatabase, QGuiApplication, QIcon
 
 from rpncalc import __main__ as entry
+from rpncalc.keymap import KEY_ROWS
 from rpncalc.__main__ import Startup, main, start
 
 
@@ -705,3 +706,100 @@ class TestSettingsMenu:
         widest = max(metrics.horizontalAdvance(label) for label in self.LABELS)
         em = font.pixelSize() if font.pixelSize() > 0 else max(1, round(font.pointSizeF() * 4 / 3))
         assert menu.property("width") >= widest + em
+
+
+class TestKeypadGeometry:
+    """The faceplate is a five-column grid; ENTER spans two of those columns.
+
+    Measured off the real window rather than reasoned about, because the bug
+    this guards was invisible in the source: `Layout.fillWidth` shares surplus
+    space out *equally* between items, not in proportion to their preferred
+    width, so a two-span ENTER declared that way came out narrower than the
+    pair it covers while the three single keys beside it came out wider than
+    the columns above them. Nothing about the QML looked wrong.
+    """
+
+    COLUMNS = 5
+
+    def cells(self, window, app):
+        """Every keycap's (key id, x, width), row by row.
+
+        Repeater delegates are not QObject children of anything reachable with
+        `findChild`, so they have to be pulled out with `itemAt` evaluated in
+        the Repeater's own QML context.
+        """
+        from PySide6.QtCore import QObject
+        from PySide6.QtQml import QQmlExpression, qmlContext
+
+        window.setProperty("width", 420)
+        window.setProperty("height", 820)
+        app.processEvents()
+
+        def repeaters(obj, found):
+            for child in obj.children():
+                if child.metaObject().className() == "QQuickRepeater":
+                    found.append(child)
+                repeaters(child, found)
+            return found
+
+        def item_at(repeater, index):
+            expression = QQmlExpression(
+                qmlContext(repeater), repeater, f"itemAt({index})"
+            )
+            value, _ = expression.evaluate()
+            return value
+
+        keypad = next(
+            r for r in repeaters(window, [])
+            if r.property("count") == len(KEY_ROWS)
+        )
+        rows = []
+        for row_index in range(keypad.property("count")):
+            row = item_at(keypad, row_index)
+            inner = repeaters(row, [])[0]
+            rows.append([
+                (
+                    cell.property("keyValue"),
+                    round(cell.x(), 3),
+                    round(cell.width(), 3),
+                )
+                for cell in (
+                    item_at(inner, i) for i in range(inner.property("count"))
+                )
+            ])
+        return rows
+
+    @pytest.fixture
+    def rows(self, started, qt_app):
+        measured = self.cells(started.window, qt_app)
+        assert measured and all(measured), "no keycaps were rendered"
+        return measured
+
+    def test_every_full_row_has_five_equal_columns(self, rows):
+        full = [r for r in rows if len(r) == self.COLUMNS]
+        assert len(full) == len(rows) - 1  # every row but ENTER's
+        widths = {width for row in full for _, _, width in row}
+        assert len(widths) == 1, f"columns are not uniform: {sorted(widths)}"
+
+    def test_the_bottom_row_keeps_the_columns_above_it(self, rows):
+        reference, bottom = rows[-2], rows[-1]
+        for index, (key_id, x, width) in enumerate(bottom[:-1]):
+            assert width == reference[index][2], f"{key_id} is not one column"
+            assert x == reference[index][1], f"{key_id} left the grid"
+
+    def test_enter_spans_exactly_two_columns_and_the_gap_between(self, rows):
+        reference, bottom = rows[-2], rows[-1]
+        key_id, x, width = bottom[-1]
+        assert key_id == "enter"
+        column = reference[0][2]
+        gap = reference[1][1] - reference[0][1] - column
+        assert width == pytest.approx(2 * column + gap, abs=0.5)
+        # It starts where the fourth column starts and ends where the fifth ends.
+        assert x == pytest.approx(reference[-2][1], abs=0.5)
+        assert x + width == pytest.approx(
+            reference[-1][1] + reference[-1][2], abs=0.5
+        )
+
+    def test_the_face_carries_every_key_the_keymap_declares(self, rows):
+        rendered = [key_id for row in rows for key_id, _, _ in row]
+        assert rendered == [key.key_id for row in KEY_ROWS for key in row]
