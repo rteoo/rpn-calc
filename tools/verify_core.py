@@ -25,6 +25,7 @@ CORE = [
     "*/rpn_engine.py",
     "*/alg_engine.py",
     "*/keymap.py",
+    "*/finance.py",
 ]
 
 

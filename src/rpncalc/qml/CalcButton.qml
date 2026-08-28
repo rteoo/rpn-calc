@@ -5,9 +5,7 @@ import QtQuick
 // with the page, operators lift a step lighter - with the 50g's coloured shift
 // and alpha keys added.
 //
-// The left-shift legend takes the theme's ink colour rather than a literal
-// white: it is white on a real 50g because the faceplate is black, and the
-// point is maximum contrast, which a hardcoded white loses in light mode.
+// Shift legends are yellow on both sides of the cap — one shift plane.
 Item {
     id: control
 
@@ -23,7 +21,7 @@ Item {
     property bool hoverEnabled: true
     property color pageColor: "#101010"
     property color inkColor: "#eeeeee"
-    property color rightShiftColor: "#e08a2e"
+    property color rightShiftColor: "#f0c419"
     property color alphaColor: "#f0c419"
     property int legendPixelSize: 9
 
@@ -56,8 +54,8 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(implicitWidth, parent.width * 0.55)
             text: control.labelLeft
-            color: control.inkColor
-            opacity: control.legendOpacity("left")
+            color: control.rightShiftColor
+            opacity: control.legendOpacity("right")
             elide: Text.ElideRight
             font.family: "iA Writer Mono S"
             font.pixelSize: control.legendPixelSize
@@ -87,22 +85,16 @@ Item {
         readonly property real activeLift: restingLift
             + (hitArea.pressed ? 0.09 : (hitArea.containsMouse ? 0.045 : 0))
         readonly property bool armed:
-            (control.kind === "shift_left" && control.armedShift === "left")
-            || (control.kind === "shift_right" && control.armedShift === "right")
+            control.kind === "shift_right" && control.armedShift === "right"
         readonly property color capInk:
-            (control.kind === "enter" || control.kind === "shift_left"
-             || control.kind === "shift_right" || control.kind === "alpha")
+            (control.kind === "enter" || control.kind === "shift_right")
                 ? control.pageColor : control.inkColor
 
         radius: Math.min(14, height * 0.18)
         opacity: control.live ? 1.0 : 0.38
         color: {
-            if (control.kind === "shift_left")
-                return control.inkColor;
             if (control.kind === "shift_right")
                 return control.rightShiftColor;
-            if (control.kind === "alpha")
-                return control.alphaColor;
             if (control.kind === "enter")
                 return control.mixColors(control.inkColor, control.pageColor,
                     hitArea.pressed ? 0.22 : (hitArea.containsMouse ? 0.1 : 0));
@@ -136,8 +128,8 @@ Item {
             anchors.rightMargin: Math.round(parent.width * 0.04)
             anchors.verticalCenter: parent.verticalCenter
             horizontalAlignment: Text.AlignHCenter
-            visible: control.iconName === "" && control.kind !== "shift_left"
-                     && control.kind !== "shift_right" && control.label !== ""
+            visible: control.iconName === "" && control.kind !== "shift_right"
+                     && control.label !== ""
             text: control.label
             color: cap.capInk
             elide: Text.ElideRight
@@ -155,32 +147,23 @@ Item {
             anchors.centerIn: parent
             width: Math.round(parent.width * 0.34)
             height: Math.round(width * 0.8)
-            visible: control.kind === "shift_left" || control.kind === "shift_right"
+            visible: control.kind === "shift_right"
 
             onPaint: {
+                // Yellow shift key: an up-pointing arrow, matching the outline.
                 var context = getContext("2d");
                 var w = width;
                 var h = height;
                 context.clearRect(0, 0, w, h);
                 context.fillStyle = String(cap.capInk);
                 context.beginPath();
-                if (control.kind === "shift_left") {
-                    context.moveTo(1, h / 2);
-                    context.lineTo(w * 0.55, 1);
-                    context.lineTo(w * 0.55, h * 0.3);
-                    context.lineTo(w - 1, h * 0.3);
-                    context.lineTo(w - 1, h * 0.7);
-                    context.lineTo(w * 0.55, h * 0.7);
-                    context.lineTo(w * 0.55, h - 1);
-                } else {
-                    context.moveTo(w - 1, h / 2);
-                    context.lineTo(w * 0.45, 1);
-                    context.lineTo(w * 0.45, h * 0.3);
-                    context.lineTo(1, h * 0.3);
-                    context.lineTo(1, h * 0.7);
-                    context.lineTo(w * 0.45, h * 0.7);
-                    context.lineTo(w * 0.45, h - 1);
-                }
+                context.moveTo(w / 2, 0);
+                context.lineTo(w, h * 0.55);
+                context.lineTo(w * 0.68, h * 0.55);
+                context.lineTo(w * 0.68, h);
+                context.lineTo(w * 0.32, h);
+                context.lineTo(w * 0.32, h * 0.55);
+                context.lineTo(0, h * 0.55);
                 context.closePath();
                 context.fill();
             }
@@ -297,10 +280,8 @@ Item {
     Accessible.role: Accessible.Button
     Accessible.name: {
         if (iconName === "backspace") return "Backspace or drop";
-        if (kind === "shift_left") return "Left shift";
-        if (kind === "shift_right") return "Right shift";
+        if (kind === "shift_right") return "Shift";
         if (label === "ENTER") return "Enter";
-        if (label === "SWAP") return "Swap";
         if (label === "÷") return "Divide";
         if (label === "×") return "Multiply";
         if (label === "−") return "Subtract";
