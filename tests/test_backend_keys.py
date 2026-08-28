@@ -437,3 +437,134 @@ class TestMobileHost:
         backend.saveWindowGeometry(10, 20, 400, 800, True)
         assert QSettings().value("window/geometry") is None
         assert QSettings().value("window/maximized") is None
+
+
+class TestFinanceScreenOwnsTheKeyboard:
+    """The FINANCE form hides the stack, so it must answer for the keyboard.
+
+    It used to let every unhandled key through to the RPN engine: typing 360
+    on the form opened an *invisible* command line, EDIT then failed with
+    "Too Few Arguments", and pressing an operator quietly rearranged a stack
+    nobody could see. Same rule the interactive stack browser already follows.
+    """
+
+    def open_form(self, backend):
+        backend.pressCommand("finance")
+        assert backend.financeOpen
+        return backend
+
+    def test_typing_shows_on_the_form_and_enter_stores_it(self, backend):
+        self.open_form(backend)
+        press_commands(backend, "3 6 0")
+        # The form draws the command line, because the stack view is hidden.
+        assert backend.commandLine == "360"
+        backend.pressCommand("enter")
+        assert backend.commandLine == ""
+        assert backend.financeFields[0]["label"] == "N:"
+        assert backend.financeFields[0]["value"] == "360"
+
+    def test_a_full_tvm_problem_typed_into_the_form(self, backend):
+        """The 12C's classic mortgage, entered the way the form intends."""
+        self.open_form(backend)
+        press_commands(backend, "3 6 0 enter")          # N
+        backend.pressCommand("down")
+        press_commands(backend, "9 enter")              # I%YR, over 12 P/YR
+        backend.pressCommand("down")
+        press_commands(backend, "1 0 0 0 0 0 enter")    # PV
+        backend.pressCommand("down")                    # cursor on PMT
+        backend.pressMenu(2)                            # SOLVE
+        assert backend._rpn.stack.peek(1) == pytest.approx(-804.62, abs=0.01)
+
+    def test_arithmetic_never_reaches_the_hidden_stack(self, backend):
+        press_commands(backend, "8 enter 2")
+        before = backend._rpn.stack.to_list()
+        self.open_form(backend)
+        for key in ("+", "-", "*", "/", "swap", "drop", "dup", "percent"):
+            backend.pressCommand(key)
+        assert backend._rpn.stack.to_list() == before
+
+    def test_backspace_and_chs_do_not_reach_behind_the_form(self, backend):
+        """On an empty command line these are DROP and NEG."""
+        press_commands(backend, "7 enter")
+        self.open_form(backend)
+        backend.pressCommand("backspace")
+        backend.pressCommand("chs")
+        assert backend._rpn.stack.to_list() == [7.0]
+
+    def test_backspace_and_chs_still_edit_what_is_being_typed(self, backend):
+        self.open_form(backend)
+        press_commands(backend, "1 2 3")
+        backend.pressCommand("backspace")
+        assert backend.commandLine == "12"
+        backend.pressCommand("chs")
+        assert backend.commandLine.startswith("-")
+
+    def test_a_negative_value_reaches_the_register(self, backend):
+        self.open_form(backend)
+        backend.pressCommand("down")
+        backend.pressCommand("down")
+        press_commands(backend, "5 0 0 chs enter")
+        assert backend.financeFields[2]["label"] == "PV:"
+        assert backend._rpn.finance.pv == pytest.approx(-500.0)
+
+    def test_cut_cannot_drop_a_level_behind_the_form(self, backend):
+        press_commands(backend, "7 enter 9")
+        self.open_form(backend)
+        before = backend._rpn.stack.to_list()
+        backend.pressCommand("cut")
+        assert backend._rpn.stack.to_list() == before
+
+    def test_on_cancels_the_entry_before_it_closes_the_form(self, backend):
+        self.open_form(backend)
+        press_commands(backend, "4 2")
+        backend.pressCommand("clear_entry")
+        assert backend.financeOpen          # the entry went, the form stayed
+        assert backend.commandLine == ""
+        backend.pressCommand("clear_entry")
+        assert not backend.financeOpen
+
+    def test_enter_with_nothing_typed_leaves_the_field_alone(self, backend):
+        self.open_form(backend)
+        press_commands(backend, "3 6 0 enter")
+        backend.pressCommand("enter")   # again, with an empty entry line
+        assert backend._rpn.finance.n == 360.0
+        assert backend._rpn.error is None
+
+    def test_enter_toggles_the_begin_end_row(self, backend):
+        self.open_form(backend)
+        for _ in range(6):
+            backend.pressCommand("down")
+        assert backend.financeFields[6]["label"] == "End"
+        backend.pressCommand("enter")
+        assert backend.financeFields[6]["label"] == "Begin"
+        backend.pressCommand("enter")
+        assert backend.financeFields[6]["label"] == "End"
+
+    def test_an_unreadable_entry_is_refused_not_stored(self, backend):
+        self.open_form(backend)
+        backend._rpn.command_line = "1e"  # EEX left dangling
+        backend.pressCommand("enter")
+        assert backend._rpn.error == "Invalid Input"
+        assert backend._rpn.finance.n == 0.0
+
+    def test_zero_periods_per_year_is_refused(self, backend):
+        self.open_form(backend)
+        for _ in range(5):
+            backend.pressCommand("down")
+        assert backend.financeFields[5]["label"] == "P/YR:"
+        press_commands(backend, "0 enter")
+        assert backend._rpn.error == "Compound Interest Error"
+        assert backend._rpn.finance.pyr == 12.0
+
+    def test_the_arrows_walk_the_fields_and_wrap(self, backend):
+        self.open_form(backend)
+        assert backend.financeCursor == 0
+        backend.pressCommand("up")
+        assert backend.financeCursor == len(backend.financeFields) - 1
+        backend.pressCommand("down")
+        assert backend.financeCursor == 0
+
+    def test_the_form_ignores_the_keyboard_in_algebraic_mode(self, backend):
+        backend.toggleEntryMode()
+        backend.pressCommand("finance")
+        assert not backend.financeOpen

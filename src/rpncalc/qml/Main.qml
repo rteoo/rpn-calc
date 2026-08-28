@@ -340,6 +340,7 @@ ApplicationWindow {
                 visible: backend.rpnMode && backend.financeOpen
                 fields: backend.financeFields
                 cursor: backend.financeCursor
+                entry: backend.commandLine
                 inkColor: win.inkColor
                 mutedColor: win.mutedColor
                 pageColor: win.pageColor
@@ -417,33 +418,41 @@ ApplicationWindow {
                 model: backend.keyRows
 
                 RowLayout {
+                    id: keyRow
                     required property var modelData
+
+                    // Every row is five columns wide. The width is computed from
+                    // the keypad rather than left to fillWidth, which shares out
+                    // surplus space *equally* between items and so would make the
+                    // bottom row's three single keys wider than the columns above
+                    // and its two-column ENTER narrower than the pair it spans.
+                    readonly property real cellSpacing: win.scaledSize(7)
+                    readonly property real cellUnit:
+                        (keypad.width - 4 * cellSpacing) / 5
 
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    spacing: win.scaledSize(7)
+                    spacing: cellSpacing
 
                     Repeater {
                         model: parent.modelData
 
                         CalcButton {
                             required property var modelData
-                            // ENTER spans two columns on the bottom row; preferred
-                            // width keeps the five-unit row geometry intact.
                             readonly property int cellSpan:
                                 (modelData.span !== undefined && modelData.span > 0)
                                 ? modelData.span : 1
 
-                            Layout.fillWidth: true
+                            Layout.fillWidth: false
                             Layout.fillHeight: true
-                            Layout.preferredWidth: cellSpan * 100
+                            Layout.preferredWidth: keyRow.cellUnit * cellSpan
+                                + (cellSpan - 1) * keyRow.cellSpacing
                             label: modelData.label
                             keyValue: modelData.keyId
                             kind: modelData.style
                             iconName: modelData.icon
                             labelLeft: modelData.labelLeft
                             labelRight: modelData.labelRight
-                            alphaLabel: modelData.alpha
                             live: modelData.live
                             hoverEnabled: backend.hasPointerHover
                             armedShift: backend.shiftState

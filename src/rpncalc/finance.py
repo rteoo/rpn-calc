@@ -186,6 +186,22 @@ def rate(n: float, pv: float, pmt: float, fv: float, begin: bool) -> float:
     pv_n = -abs(pv)
     pmt_n = abs(pmt)
     fv_n = abs(fv)
+    # The payment has to actually respond to the rate, or there is no rate to
+    # find and bisection would "converge" on whichever bound it started from.
+    # A single Begin-mode period with no balloon is the case that bites: the
+    # annuity-due factor cancels the discount exactly, so the payment is -PV
+    # whatever the interest. So is the all-zero problem. A 12C answers Error 5
+    # for both rather than inventing a number.
+    # Compared with a tolerance, not for equality: the flat case only agrees to
+    # about 1e-15 relative, while two rates a hundredfold apart move a solvable
+    # payment by a fraction of itself. There is no middle ground to get wrong.
+    if math.isclose(
+        payment(n, 1.0, pv_n, fv_n, begin),
+        payment(n, 100.0, pv_n, fv_n, begin),
+        rel_tol=1e-9,
+        abs_tol=1e-12,
+    ):
+        raise FinanceError("Compound Interest Error")
     low, high = -1.0, 99999.0
     for _ in range(10000):
         mid = (low + high) / 2.0
@@ -195,7 +211,7 @@ def rate(n: float, pv: float, pmt: float, fv: float, begin: bool) -> float:
             high = mid
             continue
         if abs(pmt_n - guessed) <= 1e-9:
-            return high
+            return mid
         if guessed > pmt_n:
             high = mid
         else:

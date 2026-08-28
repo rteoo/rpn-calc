@@ -115,10 +115,12 @@ class RpnEngine:
         # Set when digits (or a paste) put a value ready for a 12C register
         # store; cleared by operators and by the store/solve itself.
         self._finance_store_pending = False
-        # Two-variable running totals for Σ+.
+        # Two-variable running totals for Σ+, read back by MEAN and reset by
+        # CLΣ. Snapshotted alongside the stack so UNDO takes a Σ+ back whole.
         self._stats_n = 0
         self._stats_sx = 0.0
         self._stats_sy = 0.0
+        self._undo_stats: tuple[int, float, float] = (0, 0.0, 0.0)
 
     # -- UI-facing surface -------------------------------------------------
 
@@ -150,7 +152,8 @@ class RpnEngine:
         return (
             key in _DIGITS
             or key in (".", "eex", "enter", "spc", "backspace", "chs",
-                       "clear", "clear_entry", "undo", "pi", "e", "sum_plus")
+                       "clear", "clear_entry", "undo", "pi", "e", "sum_plus",
+                       "mean", "clear_sigma")
             or key in self._UNARY_METHODS
             or key in self._BINARY_METHODS
             or key in self._STACK_COMMANDS
@@ -202,7 +205,7 @@ class RpnEngine:
             self._handle_undo()
         elif key in self._FINANCE_COMMANDS:
             store = self.command_line is not None or self._finance_store_pending
-            self._undo_snapshot = self.stack.to_list()
+            self._mark_undo()
             self._commit_entry()
             self._apply_finance(key, store=store)
             self._finance_store_pending = False
@@ -213,7 +216,7 @@ class RpnEngine:
             # Recorded before the commit, not after the command: a command
             # that errors has still entered the command line onto the stack,
             # and UNDO has to take that back too.
-            self._undo_snapshot = self.stack.to_list()
+            self._mark_undo()
             self._commit_entry()
             self._finance_store_pending = False
             self._apply_command(key)
@@ -295,7 +298,7 @@ class RpnEngine:
     def _interactive_reorder(self, op, grows: bool) -> None:
         level = self.cursor_level
         assert level is not None
-        self._undo_snapshot = self.stack.to_list()
+        self._mark_undo()
         op(level)
         # The cursor stays on the same level *number* rather than following the
         # value it acted on - PICK shifts everything up by one, and the 50g
@@ -316,7 +319,7 @@ class RpnEngine:
         """Lift the selected level off the stack and into the command line."""
         level = self.cursor_level
         assert level is not None
-        self._undo_snapshot = self.stack.to_list()
+        self._mark_undo()
         value = self.stack.peek(level)
         self.stack.roll(level)  # bring it to level 1 so it can be dropped
         self.stack.drop()
@@ -326,7 +329,7 @@ class RpnEngine:
     def _interactive_drop(self) -> None:
         level = self.cursor_level
         assert level is not None
-        self._undo_snapshot = self.stack.to_list()
+        self._mark_undo()
         self.stack.roll(level)
         self.stack.drop()
         # Browsing a stack that no longer has levels makes no sense.
@@ -366,7 +369,7 @@ class RpnEngine:
             self._finance_store_pending = True
         else:
             self.stack.dup()  # ENTER on an empty command line: DUP level 1
-        self._undo_snapshot = snapshot
+        self._mark_undo(snapshot)
 
     def _handle_spc(self) -> None:
         if self.command_line is None:
@@ -381,7 +384,7 @@ class RpnEngine:
             return
         snapshot = self.stack.to_list()
         self.stack.drop()  # backspace on an empty command line: DROP level 1
-        self._undo_snapshot = snapshot
+        self._mark_undo(snapshot)
 
     def _handle_chs(self) -> None:
         if self.command_line is not None:
@@ -389,11 +392,11 @@ class RpnEngine:
             return
         snapshot = self.stack.to_list()
         self._apply_unary(self._fn_neg)  # CHS on an empty command line: NEG level 1
-        self._undo_snapshot = snapshot
+        self._mark_undo(snapshot)
 
     def _handle_clear(self) -> None:
         """CLEAR empties the stack, as right-shift CLEAR does on the 50g."""
-        self._undo_snapshot = self.stack.to_list()
+        self._mark_undo()
         self.command_line = None
         self._finance_store_pending = False
         self.stack.clear()
@@ -403,12 +406,23 @@ class RpnEngine:
         self.command_line = None
         self._finance_store_pending = False
 
+    def _mark_undo(self, snapshot: list[float] | None = None) -> None:
+        """Record what one UNDO steps back to: the stack and the Σ registers.
+
+        Every snapshot point goes through here so the two cannot drift apart -
+        a Σ+ undone after an unrelated ENTER used to restore the stack while
+        leaving the accumulated totals ahead of it.
+        """
+        self._undo_snapshot = self.stack.to_list() if snapshot is None else snapshot
+        self._undo_stats = (self._stats_n, self._stats_sx, self._stats_sy)
+
     def _handle_undo(self) -> None:
         if self._undo_snapshot is None:
             return
         self.stack.clear()
         for value in reversed(self._undo_snapshot):  # to_list() is level-1-first
             self.stack.push(value)
+        self._stats_n, self._stats_sx, self._stats_sy = self._undo_stats
         self._undo_snapshot = None  # single-level UNDO, like the 50g's UNDO key
         self._finance_store_pending = False
 
@@ -416,7 +430,7 @@ class RpnEngine:
         """Adopt a pasted number as a new level 1, as if it had been entered."""
         if not math.isfinite(value):
             raise CalcError("Infinite Result")
-        self._undo_snapshot = self.stack.to_list()
+        self._mark_undo()
         self.command_line = None
         self.stack.push(value)
         self._finance_store_pending = True
@@ -451,6 +465,32 @@ class RpnEngine:
             self.finance_cursor = (self.finance_cursor - 1) % n
         elif direction == "down":
             self.finance_cursor = (self.finance_cursor + 1) % n
+
+    def commit_finance_entry(self) -> None:
+        """ENTER on the FINANCE screen: what was typed goes into the field.
+
+        The form reuses the ordinary command line for entry, so digits, `.`,
+        EEX, CHS and backspace all behave exactly as they do on the stack -
+        the only difference is where ENTER puts the result. On the Begin/End
+        row there is nothing to type, so ENTER toggles it instead.
+        """
+        self.error = None
+        field = self._FINANCE_FIELDS[self.finance_cursor]
+        if field == "begin":
+            self.finance.begin = not self.finance.begin
+            self.command_line = None
+            return
+        if self.command_line is None:
+            return
+        value = parse_number(self.command_line)
+        self.command_line = None
+        if value is None:
+            self.error = "Invalid Input"
+            return
+        try:
+            self._store_finance_field(field, value)
+        except FinanceError as exc:
+            self.error = str(exc)
 
     def finance_menu(self, index: int) -> None:
         """Soft keys on the FINANCE screen: EDIT / AMOR / SOLVE."""
@@ -556,6 +596,10 @@ class RpnEngine:
             self.stack.push(math.e)
         elif key == "sum_plus":
             self._fn_sum_plus()
+        elif key == "mean":
+            self._fn_mean()
+        elif key == "clear_sigma":
+            self._clear_stats()
         elif key == "drop":
             self.stack.drop()
         elif key == "swap":
@@ -637,7 +681,13 @@ class RpnEngine:
         return float(math.factorial(int(x)))
 
     def _fn_sum_plus(self) -> None:
-        """Σ+: accumulate (y, x), leave n in level 1."""
+        """Σ+: accumulate one (y, x) pair, leaving n in level 1.
+
+        12C semantics: x is read from level 1 and y from level 2, but only
+        level 1 is consumed - the y value survives for the next pair, exactly
+        as the 12C's Y register does. A one-variable sample, with nothing in
+        level 2, accumulates y = 0 the way a 12C's zeroed Y register would.
+        """
         if self.stack.depth < 1:
             raise StackError("Too Few Arguments")
         x = self.stack.peek(1)
@@ -646,9 +696,20 @@ class RpnEngine:
         self._stats_sx += x
         self._stats_sy += y
         self.stack.pop()
-        if self.stack.depth >= 1:
-            self.stack.pop()
         self.stack.push(float(self._stats_n))
+
+    def _fn_mean(self) -> None:
+        """MEAN: x̄ into level 1, ȳ into level 2, as the 12C's x̄ leaves them."""
+        if self._stats_n == 0:
+            raise CalcError("Statistics Error")
+        self.stack.push(self._stats_sy / self._stats_n)
+        self.stack.push(self._stats_sx / self._stats_n)
+
+    def _clear_stats(self) -> None:
+        """CLΣ: forget every accumulated pair. The stack is not touched."""
+        self._stats_n = 0
+        self._stats_sx = 0.0
+        self._stats_sy = 0.0
 
     def _roll(self) -> None:
         self._reorder_with_count(self.stack.roll)

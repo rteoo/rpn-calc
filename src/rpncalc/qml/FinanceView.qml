@@ -7,6 +7,7 @@ Item {
 
     property var fields: []
     property int cursor: 0
+    property string entry: ""
     property color inkColor: "#eeeeee"
     property color mutedColor: "#888888"
     property color pageColor: "#101010"
@@ -75,10 +76,26 @@ Item {
             }
         }
 
+        // The entry line the form types into. It is the ordinary command
+        // line: the form has to draw it, because it hides the stack view
+        // that would otherwise be showing what is being typed.
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignRight
+            rightPadding: 4
+            topPadding: Math.round(root.fontPixelSize * 0.4)
+            visible: root.entry !== ""
+            text: root.entry + "_"
+            color: root.inkColor
+            font.family: "iA Writer Mono S"
+            font.pixelSize: root.fontPixelSize
+        }
+
         Text {
             width: parent.width
             topPadding: Math.round(root.fontPixelSize * 0.4)
-            text: "Enter value or SOLVE"
+            text: root.entry !== "" ? "ENTER stores into the field"
+                                    : "Type a value, or SOLVE"
             color: root.mutedColor
             font.family: "iA Writer Mono S"
             font.pixelSize: Math.round(root.fontPixelSize * 0.75)
