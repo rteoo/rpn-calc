@@ -676,14 +676,16 @@ class TestSettingsMenu:
         from PySide6.QtCore import QObject
 
         started = start([])
+        started.backend.pressCommand("settings")
         item = started.window.findChild(QObject, "calculatorKeyItem")
         assert item is not None
         assert item.property("text") == "Launch on the calculator key"
 
-    def test_display_locale_items_are_on_the_menu(self, clean_settings):
+    def test_display_locale_items_are_on_the_panel(self, clean_settings):
         from PySide6.QtCore import QObject
 
         started = start([])
+        started.backend.pressCommand("settings")
         decimal = started.window.findChild(QObject, "decimalCommaItem")
         thousands = started.window.findChild(QObject, "thousandsItem")
         assert decimal is not None and thousands is not None
@@ -692,20 +694,16 @@ class TestSettingsMenu:
         assert decimal.property("checked") is False
         assert thousands.property("checked") is False
 
-    def test_the_popup_is_wider_than_the_longest_label(self, clean_settings):
+    def test_the_settings_panel_is_on_the_display(self, clean_settings):
         from PySide6.QtCore import QObject
-        from PySide6.QtGui import QFontMetrics
 
         started = start([])
-        menu = started.window.findChild(QObject, "settingsMenu")
-        item = started.window.findChild(QObject, "calculatorKeyItem")
-        assert menu is not None and item is not None
-
-        font = item.property("font")
-        metrics = QFontMetrics(font)
-        widest = max(metrics.horizontalAdvance(label) for label in self.LABELS)
-        em = font.pixelSize() if font.pixelSize() > 0 else max(1, round(font.pointSizeF() * 4 / 3))
-        assert menu.property("width") >= widest + em
+        view = started.window.findChild(QObject, "settingsView")
+        assert view is not None
+        assert view.property("visible") is False
+        started.backend.pressCommand("settings")
+        assert view.property("visible") is True
+        assert started.backend.settingsOpen is True
 
 
 class TestKeypadGeometry:

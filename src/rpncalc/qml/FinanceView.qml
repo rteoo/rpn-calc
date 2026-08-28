@@ -1,7 +1,9 @@
 import QtQuick
+import QtQuick.Layouts
 
-// HP 50g-style TVM form: TIME VALUE OF MONEY registers with a cursor.
-// Soft-menu EDIT / AMOR / SOLVE is owned by SoftMenu in Main.qml.
+// HP 50g-style TVM form. Two columns so the seven registers fit above the
+// soft menu instead of overflowing onto the keypad (a single Column of
+// seven rows was taller than the display once EDIT/AMOR/SOLVE appeared).
 Item {
     id: root
 
@@ -14,6 +16,8 @@ Item {
     property int fontPixelSize: 18
     property int titlePixelSize: 14
 
+    clip: true
+
     function mixColors(base, tint, amount) {
         return Qt.rgba(
             base.r + (tint.r - base.r) * amount,
@@ -21,12 +25,53 @@ Item {
             base.b + (tint.b - base.b) * amount, 1);
     }
 
-    Column {
-        anchors.fill: parent
-        spacing: Math.round(root.fontPixelSize * 0.25)
+    function fieldAt(index) {
+        return index < root.fields.length ? root.fields[index] : null
+    }
+
+    // One register cell: label on the left, value on the right.
+    component FieldCell: Item {
+        property var field: null
+        property int fieldIndex: -1
+        property bool selected: fieldIndex === root.cursor
+
+        implicitHeight: Math.round(root.fontPixelSize * 1.35)
+
+        Rectangle {
+            anchors.fill: parent
+            color: parent.selected
+                   ? root.mixColors(root.pageColor, root.inkColor, 0.18)
+                   : "transparent"
+            radius: 2
+        }
 
         Text {
-            width: parent.width
+            anchors.left: parent.left
+            anchors.leftMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            text: parent.field ? parent.field.label : ""
+            color: root.inkColor
+            font.family: "iA Writer Mono S"
+            font.pixelSize: root.fontPixelSize
+        }
+
+        Text {
+            anchors.right: parent.right
+            anchors.rightMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            text: parent.field ? parent.field.value : ""
+            color: root.inkColor
+            font.family: "iA Writer Mono S"
+            font.pixelSize: root.fontPixelSize
+        }
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        spacing: Math.round(root.fontPixelSize * 0.2)
+
+        Text {
+            Layout.fillWidth: true
             horizontalAlignment: Text.AlignHCenter
             text: "TIME VALUE OF MONEY"
             color: root.mutedColor
@@ -34,56 +79,75 @@ Item {
             font.pixelSize: root.titlePixelSize
         }
 
-        Repeater {
-            model: root.fields
-
-            Item {
-                required property var modelData
-                required property int index
-
-                width: parent.width
-                height: Math.round(root.fontPixelSize * 1.35)
-
-                readonly property bool selected: index === root.cursor
-
-                Rectangle {
-                    anchors.fill: parent
-                    color: parent.selected
-                           ? root.mixColors(root.pageColor, root.inkColor, 0.18)
-                           : "transparent"
-                    radius: 2
-                }
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 4
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: modelData.label
-                    color: root.inkColor
-                    font.family: "iA Writer Mono S"
-                    font.pixelSize: root.fontPixelSize
-                }
-
-                Text {
-                    anchors.right: parent.right
-                    anchors.rightMargin: 4
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: modelData.value
-                    color: root.inkColor
-                    font.family: "iA Writer Mono S"
-                    font.pixelSize: root.fontPixelSize
-                }
+        // N / I%YR
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Math.round(root.fontPixelSize * 0.5)
+            FieldCell {
+                Layout.fillWidth: true
+                field: root.fieldAt(0)
+                fieldIndex: 0
+            }
+            FieldCell {
+                Layout.fillWidth: true
+                field: root.fieldAt(1)
+                fieldIndex: 1
             }
         }
+
+        // PV alone (left column)
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Math.round(root.fontPixelSize * 0.5)
+            FieldCell {
+                Layout.fillWidth: true
+                field: root.fieldAt(2)
+                fieldIndex: 2
+            }
+            Item { Layout.fillWidth: true }
+        }
+
+        // PMT / P/YR
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Math.round(root.fontPixelSize * 0.5)
+            FieldCell {
+                Layout.fillWidth: true
+                field: root.fieldAt(3)
+                fieldIndex: 3
+            }
+            FieldCell {
+                Layout.fillWidth: true
+                field: root.fieldAt(5)
+                fieldIndex: 5
+            }
+        }
+
+        // FV / Begin|End
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Math.round(root.fontPixelSize * 0.5)
+            FieldCell {
+                Layout.fillWidth: true
+                field: root.fieldAt(4)
+                fieldIndex: 4
+            }
+            FieldCell {
+                Layout.fillWidth: true
+                field: root.fieldAt(6)
+                fieldIndex: 6
+            }
+        }
+
+        Item { Layout.fillHeight: true }
 
         // The entry line the form types into. It is the ordinary command
         // line: the form has to draw it, because it hides the stack view
         // that would otherwise be showing what is being typed.
         Text {
-            width: parent.width
+            Layout.fillWidth: true
             horizontalAlignment: Text.AlignRight
             rightPadding: 4
-            topPadding: Math.round(root.fontPixelSize * 0.4)
             visible: root.entry !== ""
             text: root.entry + "_"
             color: root.inkColor
@@ -92,8 +156,7 @@ Item {
         }
 
         Text {
-            width: parent.width
-            topPadding: Math.round(root.fontPixelSize * 0.4)
+            Layout.fillWidth: true
             text: root.entry !== "" ? "ENTER stores into the field"
                                     : "Type a value, or SOLVE"
             color: root.mutedColor

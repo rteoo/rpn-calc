@@ -126,7 +126,7 @@ Finance shows up in two places:
   On the Begin/End row there is nothing to type, so ENTER toggles it.
 
 Other deliberate deviations:
-- `MENU` opens the interactive stack browser (same as `▲`);
+- `MENU` opens the on-screen SETTINGS panel; `▲` opens the interactive stack browser;
 - `ON` cancels the command line; shift-`←` is CLEAR (empty the stack);
 - ENTER spans two columns; there is no SPC key on the face (keyboard Space still works);
 - trig is off the face and has no keyboard binding either; the engine keeps it
@@ -168,10 +168,8 @@ nothing to outrank.
   subkey. The live `AppKey\18` is the user's actual desktop setting - a test run
   that writes it has broken something outside the repo.
 - Releasing the key leaves a value pointing at *another* application alone.
-- The toggle lives in a context menu on the display (right-click, `Ctrl+,` /
-  `⌘,`, or a long-press on a touch screen).
-  The faceplate is a fixed 50g replica with no room for a settings key, and
-  inventing one would be a deviation the Faceplate section would have to defend.
+- The toggle lives on the SETTINGS panel opened by `MENU` (or `Ctrl+,` /
+  `⌘,`). Dimmed where there is no registry to write.
 
 ## Apple platforms
 
