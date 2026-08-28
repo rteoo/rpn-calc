@@ -63,9 +63,12 @@ class TestShiftPlanes:
             ("pv", Shift.RIGHT, "fin_npv"),
             ("percent", Shift.RIGHT, "delta_percent"),
             ("sum", Shift.NONE, "sum_plus"),
-            ("sum", Shift.RIGHT, "mean"),
+            ("sum", Shift.RIGHT, "sigma_minus"),
             ("plus", Shift.NONE, "+"),
             ("plus", Shift.RIGHT, "sigma_sum"),
+            ("minus", Shift.RIGHT, "mean"),
+            ("multiply", Shift.RIGHT, "median"),
+            ("divide", Shift.RIGHT, "stddev"),
             ("inv", Shift.RIGHT, "fact"),
             ("on", Shift.RIGHT, "clear_sigma"),
         ],
@@ -107,9 +110,16 @@ class TestShiftState:
         assert resolve("shift", state) is None
 
     def test_shift_is_spent_even_on_an_unbound_plane(self):
+        # Whichever key that happens to be: the faceplate has filled three
+        # empty planes in as many changes, and this test is about the shift
+        # state machine, not about which cap is currently bare.
+        bare = next(
+            key.key_id for key in KEYS_BY_ID.values()
+            if key.action_for(Shift.RIGHT) is None
+        )
         state = ShiftState()
         resolve("shift", state)
-        assert resolve("divide", state) is None  # no shifted plane on ÷
+        assert resolve(bare, state) is None
         assert state.shift is Shift.NONE
 
     def test_clear_disarms(self):
@@ -172,10 +182,15 @@ class TestNoLegendIsStranded:
         Σ left the obvious question unanswerable on the face.
         """
         assert KEYS_BY_ID["sum"].action == "sum_plus"
-        assert KEYS_BY_ID["sum"].left_action == "mean"
-        assert KEYS_BY_ID["sum"].left_label == "MEAN"
-        assert KEYS_BY_ID["plus"].left_action == "sigma_sum"
-        assert KEYS_BY_ID["plus"].left_label == "Σ"
+        assert KEYS_BY_ID["sum"].left_action == "sigma_minus"
         assert KEYS_BY_ID["on"].right_action == "clear_sigma"
-        assert KEYS_BY_ID["on"].right_label == "CLΣ"
-        assert KEYS_BY_ID["inv"].left_action == "fact"  # x! moved off MEAN
+        assert KEYS_BY_ID["inv"].left_action == "fact"
+
+    def test_the_operator_column_is_the_readback_plane(self):
+        """One rule to remember: shifted, the operators read the sample out."""
+        assert KEYS_BY_ID["plus"].left_action == "sigma_sum"
+        assert KEYS_BY_ID["minus"].left_action == "mean"
+        assert KEYS_BY_ID["multiply"].left_action == "median"
+        assert KEYS_BY_ID["divide"].left_action == "stddev"
+        assert [KEYS_BY_ID[k].left_label for k in
+                ("plus", "minus", "multiply", "divide")] == ["Σ", "MEAN", "MED", "STD"]

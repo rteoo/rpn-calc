@@ -43,6 +43,57 @@ _MENU_COMMANDS = ("ist_echo", "ist_view", "ist_edit", "ist_pick", "ist_roll",
 _ARROWS = frozenset({"up", "down", "left", "right"})
 
 
+def _mean(values: list[float]) -> float:
+    return math.fsum(values) / len(values)
+
+
+def _median(values: list[float]) -> float:
+    """The middle value; the mean of the two middles for an even sample.
+
+    The two middles are averaged directly, and only halved separately when
+    that sum overflows. Both halves of that are load-bearing: `(a + b) / 2`
+    goes infinite for middles near the float ceiling, reporting "Infinite
+    Result" for a median that is simply one of the numbers entered - while
+    `a/2 + b/2` underflows to 0.0 for two copies of `5e-324`, the smallest
+    denormal, where the median is that same number. A property test found the
+    second case within minutes of the first being fixed the naive way.
+    """
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    low, high = ordered[middle - 1], ordered[middle]
+    total = low + high
+    if math.isinf(total):
+        return low / 2.0 + high / 2.0
+    return total / 2.0
+
+
+def _stddev(values: list[float]) -> float:
+    """Sample standard deviation, n-1, by the corrected two-pass algorithm.
+
+    Not the textbook `Σx² - n·x̄²`: that subtracts two enormous nearly-equal
+    numbers, and for `1e9, 1e9+1, 1e9+2` - spread exactly 1 - it returns 0.0.
+
+    Subtracting the mean first fixes that, but not completely. The mean of a
+    tight cluster far from zero is not representable, and the leftover bias
+    rides into every deviation; a property test found `733007751635` twice
+    and `…634` once, where plain two-pass drifts in the ninth digit. The
+    `- fsum(deviations)²/n` term cancels exactly that bias, which is why this
+    agrees with `statistics.stdev` - exact rational arithmetic - to the last
+    bit on the cases that break the other two forms.
+    """
+    average = _mean(values)
+    deviations = [value - average for value in values]
+    n = len(values)
+    corrected = math.fsum(d * d for d in deviations) - math.fsum(deviations) ** 2 / n
+    # Cauchy-Schwarz says this cannot be negative, and 300k adversarial
+    # samples never made it so; the clamp is here because the alternative to a
+    # rounding artefact would be `Invalid Input` on a sample whose spread is
+    # simply zero, and a max() is cheaper than being wrong about that.
+    return math.sqrt(max(corrected, 0.0) / (n - 1))
+
+
 class CalcError(Exception):
     """A math error that is not stack underflow: infinite/undefined results
     and out-of-domain inputs. Always raised *before* any stack mutation for
@@ -115,12 +166,14 @@ class RpnEngine:
         # Set when digits (or a paste) put a value ready for a 12C register
         # store; cleared by operators and by the store/solve itself.
         self._finance_store_pending = False
-        # Two-variable running totals for Σ+, read back by MEAN and reset by
-        # CLΣ. Snapshotted alongside the stack so UNDO takes a Σ+ back whole.
-        self._stats_n = 0
-        self._stats_sx = 0.0
-        self._stats_sy = 0.0
-        self._undo_stats: tuple[int, float, float] = (0, 0.0, 0.0)
+        # Every accumulated (x, y) pair, not running totals. MEDIAN needs the
+        # individual points - no set of sums can produce one - and keeping them
+        # also lets STD take a two-pass mean-first route instead of the
+        # Σx² - n·x̄² form, which loses most of its digits to cancellation on
+        # data far from zero. Snapshotted with the stack, so UNDO takes a Σ+
+        # back whole.
+        self._stats: list[tuple[float, float]] = []
+        self._undo_stats: list[tuple[float, float]] = []
 
     # -- UI-facing surface -------------------------------------------------
 
@@ -153,7 +206,8 @@ class RpnEngine:
             key in _DIGITS
             or key in (".", "eex", "enter", "spc", "backspace", "chs",
                        "clear", "clear_entry", "undo", "pi", "e", "sum_plus",
-                       "mean", "sigma_sum", "clear_sigma")
+                       "mean", "sigma_sum", "sigma_minus", "median",
+                       "stddev", "clear_sigma")
             or key in self._UNARY_METHODS
             or key in self._BINARY_METHODS
             or key in self._STACK_COMMANDS
@@ -414,7 +468,7 @@ class RpnEngine:
         leaving the accumulated totals ahead of it.
         """
         self._undo_snapshot = self.stack.to_list() if snapshot is None else snapshot
-        self._undo_stats = (self._stats_n, self._stats_sx, self._stats_sy)
+        self._undo_stats = list(self._stats)
 
     def _handle_undo(self) -> None:
         if self._undo_snapshot is None:
@@ -422,7 +476,7 @@ class RpnEngine:
         self.stack.clear()
         for value in reversed(self._undo_snapshot):  # to_list() is level-1-first
             self.stack.push(value)
-        self._stats_n, self._stats_sx, self._stats_sy = self._undo_stats
+        self._stats = list(self._undo_stats)
         self._undo_snapshot = None  # single-level UNDO, like the 50g's UNDO key
         self._finance_store_pending = False
 
@@ -600,6 +654,12 @@ class RpnEngine:
             self._fn_mean()
         elif key == "sigma_sum":
             self._fn_sigma_sum()
+        elif key == "sigma_minus":
+            self._fn_sigma_minus()
+        elif key == "median":
+            self._fn_median()
+        elif key == "stddev":
+            self._fn_stddev()
         elif key == "clear_sigma":
             self._clear_stats()
         elif key == "drop":
@@ -690,15 +750,53 @@ class RpnEngine:
         as the 12C's Y register does. A one-variable sample, with nothing in
         level 2, accumulates y = 0 the way a 12C's zeroed Y register would.
         """
+        self._stats.append(self._read_pair())
+        self.stack.pop()
+        self.stack.push(float(len(self._stats)))
+
+    def _fn_sigma_minus(self) -> None:
+        """Σ-: take one accumulated pair back out, leaving n in level 1.
+
+        The 12C's correction key: key the wrong entry in again and press Σ-.
+        Reading (y, x) exactly as Σ+ does means the same keystrokes undo the
+        same point. Unlike a 12C, which subtracts from its sums whether or not
+        the pair was ever added, this refuses a pair it never saw - the totals
+        cannot be driven somewhere no data could put them.
+        """
+        pair = self._read_pair()
+        if pair not in self._stats:
+            raise CalcError("Statistics Error")
+        self._stats.remove(pair)
+        self.stack.pop()
+        self.stack.push(float(len(self._stats)))
+
+    def _read_pair(self) -> tuple[float, float]:
+        """The (x, y) Σ+ and Σ- both read off the stack."""
         if self.stack.depth < 1:
             raise StackError("Too Few Arguments")
         x = self.stack.peek(1)
         y = self.stack.peek(2) if self.stack.depth >= 2 else 0.0
-        self._stats_n += 1
-        self._stats_sx += x
-        self._stats_sy += y
-        self.stack.pop()
-        self.stack.push(float(self._stats_n))
+        return (x, y)
+
+    def _stats_columns(self, *, minimum: int) -> tuple[list[float], list[float]]:
+        """The x and y samples, refusing a question too small to answer."""
+        if len(self._stats) < minimum:
+            raise CalcError("Statistics Error")
+        return [x for x, _ in self._stats], [y for _, y in self._stats]
+
+    def _push_readback(self, summarise, xs: list[float], ys: list[float]) -> None:
+        """Every statistics readback lands the same way: x in 1, y in 2.
+
+        Routed through `_evaluate` for the same reason the unary and binary
+        functions are: a sample of values near the float ceiling overflows
+        while being summarised, and an OverflowError out of here is not one of
+        the exceptions `press` catches - it would take the window down rather
+        than show "Infinite Result".
+        """
+        x_value = self._evaluate(summarise, xs)
+        y_value = self._evaluate(summarise, ys)
+        self.stack.push(y_value)
+        self.stack.push(x_value)
 
     def _fn_sigma_sum(self) -> None:
         """Σ: Σx into level 1, Σy into level 2, as the 12C's RCL Σ+ leaves them.
@@ -706,23 +804,33 @@ class RpnEngine:
         The reason the accumulator exists. MEAN is Σ divided by n, not the
         other way round, so this is the more basic of the two readbacks.
         """
-        if self._stats_n == 0:
-            raise CalcError("Statistics Error")
-        self.stack.push(self._stats_sy)
-        self.stack.push(self._stats_sx)
+        xs, ys = self._stats_columns(minimum=1)
+        self._push_readback(math.fsum, xs, ys)
 
     def _fn_mean(self) -> None:
         """MEAN: x̄ into level 1, ȳ into level 2, as the 12C's x̄ leaves them."""
-        if self._stats_n == 0:
-            raise CalcError("Statistics Error")
-        self.stack.push(self._stats_sy / self._stats_n)
-        self.stack.push(self._stats_sx / self._stats_n)
+        xs, ys = self._stats_columns(minimum=1)
+        self._push_readback(_mean, xs, ys)
+
+    def _fn_median(self) -> None:
+        """MEDIAN: the middle value of each column, averaging the two middles
+        of an even-sized sample. Needs the points themselves, which is why the
+        accumulator keeps them rather than running totals."""
+        xs, ys = self._stats_columns(minimum=1)
+        self._push_readback(_median, xs, ys)
+
+    def _fn_stddev(self) -> None:
+        """STD: the sample standard deviation, dividing by n-1 as the 12C does.
+
+        One point has no spread to report - the n-1 denominator is zero - so
+        this asks for two, where MEAN and MEDIAN are happy with one.
+        """
+        xs, ys = self._stats_columns(minimum=2)
+        self._push_readback(_stddev, xs, ys)
 
     def _clear_stats(self) -> None:
         """CLΣ: forget every accumulated pair. The stack is not touched."""
-        self._stats_n = 0
-        self._stats_sx = 0.0
-        self._stats_sy = 0.0
+        self._stats.clear()
 
     def _roll(self) -> None:
         self._reorder_with_count(self.stack.roll)
