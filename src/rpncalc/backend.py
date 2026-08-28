@@ -572,6 +572,10 @@ class Backend(QObject):
             rpn.press(command)
         elif command == "enter":
             rpn.commit_finance_entry()
+        elif command == "clear":
+            # Shift-← empties the registers, as it empties the stack outside
+            # the form. Nothing else on the face clears the TVM problem.
+            rpn.clear_finance()
         elif command == "clear_entry":
             if rpn.command_line is None:
                 self._finance_open = False

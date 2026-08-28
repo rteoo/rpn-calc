@@ -123,7 +123,19 @@ Finance shows up in two places:
   the entry keys, ENTER and ON, and swallows everything else. Entry reuses the
   ordinary command line — the form draws it, because the stack view that would
   normally show it is hidden — and ENTER stores it into the selected register.
-  On the Begin/End row there is nothing to type, so ENTER toggles it.
+  On the Begin/End row there is nothing to type, so ENTER toggles it, and
+  shift-`←` (CLEAR) empties the registers while leaving P/YR and Begin/End,
+  which configure the problem rather than state it.
+  **The form has `clip: true` and no room to spare**, so anything that does not
+  fit is sliced instead of reported: a solved value carries full precision
+  (FV on a 12-period 12% problem is `1126.82503013197`), which is wider than
+  the half-display cell it sits in and drew straight through its own label as
+  `FM26.82503013197`; and the entry line stacked above the hint needed 178px
+  of a 151px form, so the number being typed was cut in half. Values are now
+  bounded by the label and shrink to fit; the entry and the hint share one
+  line, because they are alternatives.
+  `tests/test_startup.py::TestFinanceFormLayout` measures both off the
+  rendered window — neither is visible to a headless test of the engine.
 
 Other deliberate deviations:
 - **`y√x` reads the stack left to right**, index in level 2 and radicand in
