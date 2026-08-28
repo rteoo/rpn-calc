@@ -44,10 +44,6 @@ class TestGrid:
         assert "alpha" not in KEYS_BY_ID
         assert KEYS_BY_ID["shift"].style == "shift_right"
 
-    def test_alpha_letters_are_not_printed(self):
-        for key in KEYS_BY_ID.values():
-            assert key.alpha == "", f"{key.key_id} still shows alpha {key.alpha!r}"
-
     def test_finance_keys_are_on_the_face(self):
         for key_id in ("n", "i", "pv", "pmt", "fv"):
             assert KEYS_BY_ID[key_id].action.startswith("fin_")
@@ -67,6 +63,9 @@ class TestShiftPlanes:
             ("pv", Shift.RIGHT, "fin_npv"),
             ("percent", Shift.RIGHT, "delta_percent"),
             ("sum", Shift.RIGHT, "fact"),
+            ("sum", Shift.NONE, "sum_plus"),
+            ("inv", Shift.RIGHT, "mean"),
+            ("on", Shift.RIGHT, "clear_sigma"),
         ],
     )
     def test_resolves(self, key_id, shift, expected):
@@ -108,7 +107,7 @@ class TestShiftState:
     def test_shift_is_spent_even_on_an_unbound_plane(self):
         state = ShiftState()
         resolve("shift", state)
-        assert resolve("inv", state) is None  # no shifted plane on 1/X
+        assert resolve("divide", state) is None  # no shifted plane on ÷
         assert state.shift is Shift.NONE
 
     def test_clear_disarms(self):
@@ -139,3 +138,34 @@ class TestKeymapEngineContract:
         }
         unknown = sorted(a for a in bound if not engine.knows(a))
         assert unknown == [], f"keys bound to commands the engine lacks: {unknown}"
+
+
+class TestNoLegendIsStranded:
+    """Every shift legend on the face has to reach a live command.
+
+    `Key.action_for` collapses the two legend slots onto one shift plane and
+    prefers `right_action`, so a key that filled both slots would silently
+    lose its left one. No key does today; this is what notices if one starts.
+    """
+
+    def test_no_key_carries_two_shifted_actions(self):
+        for key in KEYS_BY_ID.values():
+            assert not (key.left_action and key.right_action), (
+                f"{key.key_id} declares both planes; one is unreachable"
+            )
+
+    def test_every_shift_legend_resolves_to_a_command(self):
+        for key in KEYS_BY_ID.values():
+            if not (key.left_label or key.right_label):
+                continue
+            assert key.action_for(Shift.RIGHT) is not None, (
+                f"{key.key_id} draws a shift legend that does nothing"
+            )
+
+    def test_the_statistics_trio_is_all_on_the_face(self):
+        """Σ+ is only useful with something that reads the totals back."""
+        assert KEYS_BY_ID["sum"].action == "sum_plus"
+        assert KEYS_BY_ID["inv"].left_action == "mean"
+        assert KEYS_BY_ID["on"].right_action == "clear_sigma"
+        assert KEYS_BY_ID["inv"].left_label == "MEAN"
+        assert KEYS_BY_ID["on"].right_label == "CLΣ"

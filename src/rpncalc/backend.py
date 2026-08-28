@@ -43,6 +43,10 @@ _DECIMAL_COMMA_SETTING = "display/decimalComma"
 _THOUSANDS_SETTING = "display/thousandsSeparator"
 
 
+# Keys that type into the FINANCE screen's entry line. CHS and backspace join
+# them only while a line is open - see `Backend._press_finance`.
+_FINANCE_ENTRY_KEYS = frozenset("0123456789") | {".", "eex"}
+
 # RPN command ids that mean something to the algebraic engine too. The 50g uses
 # one keyboard for both modes, so the keypad never changes shape - keys that
 # have no algebraic meaning simply dim.
@@ -391,7 +395,6 @@ class Backend(QObject):
                     "label": key.label,
                     "labelLeft": key.left_label,
                     "labelRight": key.right_label,
-                    "alpha": key.alpha,
                     "style": key.style,
                     "span": key.span,
                     "live": self._key_is_live(key),
@@ -463,22 +466,15 @@ class Backend(QObject):
     @Slot(str)
     def pressCommand(self, command: str) -> None:
         """A resolved command, from the keypad or the physical keyboard."""
-        if command in ("copy", "cut", "paste"):
-            self._handle_clipboard(command)
-            return
         if command == "finance":
             self._toggle_finance()
             return
-
         if self._finance_open and self._rpn_mode:
-            if command in ("up", "down"):
-                self._rpn.finance_move(command)
-                self.financeChanged.emit()
-                return
-            if command == "clear_entry":
-                self._finance_open = False
-                self.financeChanged.emit()
-                return
+            self._press_finance(command)
+            return
+        if command in ("copy", "cut", "paste"):
+            self._handle_clipboard(command)
+            return
 
         if self._rpn_mode:
             self._rpn.press(command)
@@ -489,7 +485,8 @@ class Backend(QObject):
         if command in ("up", "down", "left", "right") or command.startswith("ist_"):
             return  # the stack browser has nothing to browse in algebraic mode
         if command.startswith("fin_") or command in (
-            "e", "fact", "sum_plus", "delta_percent", "finance",
+            "e", "fact", "sum_plus", "mean", "clear_sigma", "delta_percent",
+            "finance",
         ):
             return
         key = command if command.isdigit() else _ALG_EQUIVALENT.get(command)
@@ -497,6 +494,36 @@ class Backend(QObject):
             return
         self._engine.press(key)
         self.calculationChanged.emit()
+
+    def _press_finance(self, command: str) -> None:
+        """The FINANCE screen owns the keyboard while it is showing.
+
+        It hides the stack, so anything it does not answer is swallowed rather
+        than allowed through - a key that quietly rearranged the stack behind
+        the form is the same mistake the interactive stack browser already
+        refuses to make. Entry keys go to the ordinary command line, which the
+        form draws, and ENTER stores it into the selected register.
+        """
+        rpn = self._rpn
+        if command in ("up", "down"):
+            rpn.finance_move(command)
+        elif command in _FINANCE_ENTRY_KEYS:
+            rpn.press(command)
+        elif command in ("chs", "backspace") and rpn.command_line is not None:
+            # Only while something is being typed: on an empty command line
+            # these are NEG and DROP, which would reach behind the form.
+            rpn.press(command)
+        elif command == "enter":
+            rpn.commit_finance_entry()
+        elif command == "clear_entry":
+            if rpn.command_line is None:
+                self._finance_open = False
+            else:
+                rpn.command_line = None  # ON cancels the entry before the form
+        else:
+            return
+        self.financeChanged.emit()
+        self.stackChanged.emit()
 
     def _toggle_finance(self) -> None:
         if not self._rpn_mode:

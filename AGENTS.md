@@ -108,14 +108,33 @@ Finance shows up in two places:
   `CFo` / `CFj`) follow 12C store-vs-solve: a fresh entry stores into the register;
   pressing the key with no new entry solves for it. Math lives in `finance.py`, read
   against [finanx-12c](https://github.com/fabiolimace/finanx-12c) and the HP-12C guide.
+  **`rate()` bisects, so it has to return the mid it converged on, not a bound,
+  and it has to refuse a problem it cannot solve.** A single Begin-mode period
+  with no balloon pays back exactly the principal whatever the interest — the
+  annuity-due factor cancels the discount — so no rate can be recovered; the
+  all-zero problem is flat for the same reason. Both used to "converge" on the
+  99999 upper bound and report it as an interest rate, silently. `rate()` now
+  probes two rates for a flat payment first and raises instead.
 - **Shift-FINANCE** opens a 50g-style TVM form (N, I%YR, PV, PMT, FV, P/YR, Begin/End)
   with soft keys EDIT / AMOR / SOLVE. AMOR is declared unimplemented and dimmed.
+  **The form owns the keyboard while it is showing**, the way the interactive
+  stack browser does, and for the same reason: it hides the stack view, so a key
+  it let through would rearrange a stack nobody can see. It answers the arrows,
+  the entry keys, ENTER and ON, and swallows everything else. Entry reuses the
+  ordinary command line — the form draws it, because the stack view that would
+  normally show it is hidden — and ENTER stores it into the selected register.
+  On the Begin/End row there is nothing to type, so ENTER toggles it.
 
 Other deliberate deviations:
 - `MENU` opens the interactive stack browser (same as `▲`);
 - `ON` cancels the command line; shift-`←` is CLEAR (empty the stack);
 - ENTER spans two columns; there is no SPC key on the face (keyboard Space still works);
-- trig is off the face (engine still has it for the keyboard / tests);
+- trig is off the face and has no keyboard binding either; the engine keeps it
+  for the tests and the oracle;
+- `Σ+` accumulates a (y, x) pair 12C-style — x from level 1, y read from level 2
+  but *not* consumed — and leaves n in level 1. Shift-`1/X` is MEAN (x̄ into
+  level 1, ȳ into level 2) and shift-`ON` is CLΣ. The accumulator rides in the
+  UNDO snapshot, so one UNDO takes a Σ+ back whole;
 - the soft-menu labels are themselves the buttons; `F1`–`F6` press them from the keyboard.
 
 Anything drawn rather than typeset (shift arrow, direction arrows, the backspace

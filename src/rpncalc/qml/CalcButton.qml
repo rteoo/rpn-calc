@@ -2,8 +2,8 @@ import QtQuick
 
 // One keyboard cell: the shift legends printed on the faceplate above the cap,
 // and the cap itself. Cap treatment is omacalc's - numbers sit almost flush
-// with the page, operators lift a step lighter - with the 50g's coloured shift
-// and alpha keys added.
+// with the page, operators lift a step lighter - with the yellow shift key
+// standing out from them.
 //
 // Shift legends are yellow on both sides of the cap — one shift plane.
 Item {
@@ -11,18 +11,16 @@ Item {
 
     property string label
     property string keyValue: label
-    property string kind: "number" // number | operator | enter | shift_left | shift_right | alpha
+    property string kind: "number" // number | operator | enter | shift_right | nav
     property string iconName
     property string labelLeft
     property string labelRight
-    property string alphaLabel
     property string armedShift: "none"
     property bool live: true
     property bool hoverEnabled: true
     property color pageColor: "#101010"
     property color inkColor: "#eeeeee"
     property color rightShiftColor: "#f0c419"
-    property color alphaColor: "#f0c419"
     property int legendPixelSize: 9
 
     signal activated()
@@ -102,29 +100,13 @@ Item {
         }
         border.width: armed ? 2 : (control.kind === "number" ? 1 : 0)
         border.color: armed
-            ? control.alphaColor
+            ? control.rightShiftColor
             : control.mixColors(control.pageColor, control.inkColor, 0.13)
 
         Text {
-            id: alphaText
-            anchors.right: parent.right
-            anchors.rightMargin: Math.round(parent.width * 0.07)
-            anchors.verticalCenter: parent.verticalCenter
-            visible: control.alphaLabel !== "" && control.kind !== "alpha"
-            text: control.alphaLabel
-            color: control.alphaColor
-            opacity: 0.85
-            font.family: "iA Writer Mono S"
-            font.pixelSize: Math.round(parent.height * 0.26)
-        }
-
-        // The label centres in whatever the alpha letter leaves behind, and its
-        // size is capped by the label's own length: a four-letter cap like HIST
-        // would otherwise run straight through the alpha letter beside it.
-        Text {
             anchors.left: parent.left
             anchors.leftMargin: Math.round(parent.width * 0.04)
-            anchors.right: alphaText.visible ? alphaText.left : parent.right
+            anchors.right: parent.right
             anchors.rightMargin: Math.round(parent.width * 0.04)
             anchors.verticalCenter: parent.verticalCenter
             horizontalAlignment: Text.AlignHCenter

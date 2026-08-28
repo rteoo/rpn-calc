@@ -318,11 +318,12 @@ class TestFaceKeys:
         e.press("drop")
         for k in ("2", "enter", "3", "sum_plus"):
             e.press(k)
-        assert e.stack.peek(1) == 1.0
+        # n replaces level 1; the y value is read, not eaten.
+        assert e.stack.to_list() == [1.0, 2.0]
         e.press("4")
-        e.press("sum_plus")  # single-argument form
-        assert e.stack.peek(1) == 2.0
-        e.press("drop")
+        e.press("sum_plus")
+        assert e.stack.to_list() == [2.0, 1.0, 2.0]
+        e.press("clear")
         e.press("sum_plus")
         assert e.error == "Too Few Arguments"
 
@@ -348,12 +349,15 @@ class TestHardBranches:
         assert period(1.0, 10000.0, pmt, 0.0, False) == 36.0
 
     def test_rate_bisection_skips_bad_mids(self, monkeypatch):
-        calls = {"n": 0}
         real = payment
 
         def flaky(n, i_pct, pv, fv, begin):
-            calls["n"] += 1
-            if calls["n"] < 3:
+            # Make the far end of the search range unevaluable, so the
+            # bisection has to walk `high` down past it. Keyed on the rate
+            # rather than a call count: `rate` probes for a flat payment
+            # before it starts, and a counting stub would swallow the probe
+            # instead of the mids this test is about.
+            if i_pct > 1000.0:
                 raise FinanceError("Compound Interest Error")
             return real(n, i_pct, pv, fv, begin)
 
@@ -361,9 +365,12 @@ class TestHardBranches:
         assert rate(36, 10000.0, -332.14, 0.0, False) == pytest.approx(1.0, abs=0.05)
 
     def test_rate_gives_up(self, monkeypatch):
+        # Varies with the rate, so it clears the flatness probe, but never
+        # comes near the payment asked for: the bisection has to exhaust its
+        # iteration budget and give up.
         monkeypatch.setattr(
             "rpncalc.finance.payment",
-            lambda *a, **k: 999999.0,
+            lambda n, i_pct, *a, **k: 999999.0 + i_pct,
         )
         with pytest.raises(FinanceError):
             rate(10, 1000.0, -100.0, 0.0, False)
@@ -415,3 +422,146 @@ class TestHardBranches:
 
         monkeypatch.setattr("rpncalc.finance.npv", controlled)
         assert isinstance(irr(flows), float)
+
+
+class TestRateSolvesForTheRateItFound:
+    """Regressions for two `rate()` bugs that 100% branch coverage missed.
+
+    Both produced a number rather than an error, which on a calculator is the
+    expensive kind of wrong: `1 n · 1000 PV · 1000 CHS PMT · BEGIN · [i]` used
+    to answer 99999% per period with no error showing. Coverage never caught
+    it because `rate` was only ever exercised in End mode.
+    """
+
+    def test_returns_the_mid_it_converged_on_not_a_bound(self):
+        # `rate` bisects low=-1, high=99999, so its first mid is 49999. Feed it
+        # the payment that mid produces: it matches on iteration one, and the
+        # early exit used to hand back `high` - double the right answer.
+        first_mid = (-1.0 + 99999.0) / 2.0
+        pmt_at_first_mid = payment(5.0, first_mid, -1000.0, 0.0, False)
+        found = rate(5.0, 1000.0, -abs(pmt_at_first_mid), 0.0, False)
+        assert found == pytest.approx(first_mid, rel=1e-9)
+
+    @pytest.mark.parametrize("begin", [False, True])
+    @pytest.mark.parametrize("n", [2, 5, 12, 60, 360])
+    @pytest.mark.parametrize("i", [0.01, 0.5, 0.75, 5.0, 25.0, 100.0])
+    def test_recovers_the_rate_that_built_the_payment(self, n, i, begin):
+        """The round trip that would have caught both bugs on its own."""
+        pmt = payment(n, i, -1000.0, 0.0, begin)
+        assert rate(n, -1000.0, pmt, 0.0, begin) == pytest.approx(i, rel=1e-6)
+
+    @pytest.mark.parametrize("i", [0.5, 5.0, 12.0, 500.0])
+    def test_one_begin_period_pays_back_the_principal_whatever_the_rate(self, i):
+        """Why the case below is unsolvable, stated as an assertion."""
+        assert payment(1, i, -1000.0, 0.0, True) == pytest.approx(1000.0)
+
+    @pytest.mark.parametrize("i", [0.5, 5.0, 12.0])
+    def test_refuses_a_single_begin_period_with_no_balloon(self, i):
+        pmt = payment(1, i, -1000.0, 0.0, True)
+        with pytest.raises(FinanceError):
+            rate(1, -1000.0, pmt, 0.0, True)
+
+    def test_refuses_the_all_zero_problem(self):
+        # Every rate satisfies 0 = 0; there is nothing to report.
+        with pytest.raises(FinanceError):
+            rate(10, 0.0, 0.0, 0.0, False)
+
+    def test_a_begin_period_with_a_balloon_is_still_solvable(self):
+        """The guard must refuse only the flat case, not Begin mode at large."""
+        pmt = payment(1, 7.5, -1000.0, 250.0, True)
+        assert rate(1, -1000.0, pmt, 250.0, True) == pytest.approx(7.5, rel=1e-6)
+
+    def test_the_engine_reports_the_error_instead_of_a_rate(self):
+        """Through real keystrokes: the bug as a user would have met it."""
+        e = RpnEngine()
+        e.finance.begin = True
+        for k in ("1", "fin_n"):
+            e.press(k)
+        for k in ("1", "0", "0", "0", "fin_pv"):
+            e.press(k)
+        for k in ("1", "0", "0", "0", "chs", "fin_pmt"):
+            e.press(k)
+        depth_before = e.stack.depth
+        e.press("fin_i")
+        assert e.error == "Compound Interest Error"
+        assert e.stack.depth == depth_before  # errors never mutate the stack
+
+
+class TestStatisticsRegisters:
+    """Σ+ accumulates into registers MEAN reads back and CLΣ resets.
+
+    Σ+ shipped with `_stats_sx` / `_stats_sy` written and never read, and it
+    ate level 2 on the way. 12C semantics: x from level 1, y read from level 2
+    but *not* consumed, n replacing level 1.
+    """
+
+    def test_sum_plus_replaces_level_one_and_keeps_level_two(self):
+        e = RpnEngine()
+        for k in ("7", "enter", "2", "enter", "3", "sum_plus"):
+            e.press(k)
+        assert e.stack.to_list() == [1.0, 2.0, 7.0]
+
+    def test_mean_returns_both_means(self):
+        e = RpnEngine()
+        # Pairs (y, x): (10, 1), (20, 2), (30, 3).
+        for y, x in ((10, 1), (20, 2), (30, 3)):
+            e.stack.clear()
+            e.stack.push(float(y))
+            e.stack.push(float(x))
+            e.press("sum_plus")
+        e.stack.clear()
+        e.press("mean")
+        assert e.stack.peek(1) == pytest.approx(2.0)   # x̄ into level 1
+        assert e.stack.peek(2) == pytest.approx(20.0)  # ȳ into level 2
+
+    def test_a_one_variable_sample_means_over_x_alone(self):
+        e = RpnEngine()
+        for value in ("4", "6", "1", "1"):
+            e.press(value)
+            e.press("sum_plus")
+            e.press("drop")
+        e.press("mean")
+        assert e.stack.peek(1) == pytest.approx((4 + 6 + 1 + 1) / 4)
+
+    def test_mean_without_any_data_errors(self):
+        e = RpnEngine()
+        e.press("mean")
+        assert e.error == "Statistics Error"
+        assert e.stack.depth == 0
+
+    def test_clear_sigma_forgets_the_pairs_but_not_the_stack(self):
+        e = RpnEngine()
+        for k in ("5", "enter", "9", "sum_plus"):
+            e.press(k)
+        e.press("clear_sigma")
+        assert e.stack.to_list() == [1.0, 5.0]  # untouched
+        e.press("mean")
+        assert e.error == "Statistics Error"
+
+    def test_undo_takes_a_sum_plus_back_whole(self):
+        e = RpnEngine()
+        for k in ("8", "enter", "3", "sum_plus"):
+            e.press(k)
+        e.press("undo")
+        # The snapshot predates the implicit ENTER, so the typed 3 goes back
+        # with the Σ+ - one user action, one UNDO, as every other command.
+        assert e.stack.to_list() == [8.0]
+        e.press("mean")
+        assert e.error == "Statistics Error"  # the pair went back too
+
+    def test_an_unrelated_command_does_not_strand_the_accumulator(self):
+        """The reason every UNDO snapshot carries the Σ registers with it.
+
+        Undoing a later, unrelated command used to restore the stack while
+        rolling the totals back to whatever they were before the Σ+ - wiping
+        a pair the user never asked to undo.
+        """
+        e = RpnEngine()
+        for k in ("2", "enter", "3", "sum_plus"):
+            e.press(k)
+        for k in ("5", "enter"):
+            e.press(k)
+        e.press("undo")
+        e.press("mean")
+        assert e.error is None
+        assert e.stack.peek(1) == pytest.approx(3.0)  # the pair survived

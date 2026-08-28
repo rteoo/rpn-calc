@@ -11,11 +11,8 @@ from dataclasses import dataclass
 from enum import Enum
 
 # Shift legends and the shift keycap: yellow, matching the outline face.
+# CalcButton carries the same value as its own default; nothing else reads it.
 SHIFT_COLOR = "#f0c419"
-# Kept as aliases so older QML/theme references keep resolving.
-LEFT_SHIFT_COLOR = SHIFT_COLOR
-RIGHT_SHIFT_COLOR = SHIFT_COLOR
-ALPHA_COLOR = SHIFT_COLOR
 
 
 class Shift(Enum):
@@ -36,7 +33,6 @@ class Key:
     left_action: str | None = None
     right_label: str = ""
     right_action: str | None = None
-    alpha: str = ""
     style: str = "normal"  # normal | operator | enter | shift_right | nav
     span: int = 1
 
@@ -84,7 +80,7 @@ KEY_ROWS: tuple[tuple[Key, ...], ...] = (
         _k("log", "log x", "log", left_label="ln x", left_action="ln"),
         _k("sq", "x\u00b2", "sq", left_label="e", left_action="e"),
         _k("chs", "+/\u2212", "chs", left_label="\u03c0", left_action="pi"),
-        _k("inv", "1/X", "inv"),
+        _k("inv", "1/X", "inv", left_label="MEAN", left_action="mean"),
         _k("divide", "\u00f7", "/", style="operator"),
     ),
     (
@@ -109,7 +105,8 @@ KEY_ROWS: tuple[tuple[Key, ...], ...] = (
         _k("plus", "+", "+", style="operator"),
     ),
     (
-        _k("on", "ON", "clear_entry"),
+        _k("on", "ON", "clear_entry", right_label="CLΣ",
+           right_action="clear_sigma"),
         _k("0", "0", "0"),
         _k("dot", ".", "."),
         _k("enter", "ENTER", "enter", style="enter", span=2),
