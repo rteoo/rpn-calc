@@ -485,8 +485,8 @@ class Backend(QObject):
         if command in ("up", "down", "left", "right") or command.startswith("ist_"):
             return  # the stack browser has nothing to browse in algebraic mode
         if command.startswith("fin_") or command in (
-            "e", "fact", "sum_plus", "mean", "clear_sigma", "delta_percent",
-            "finance",
+            "e", "fact", "sum_plus", "mean", "sigma_sum", "clear_sigma",
+            "delta_percent", "finance",
         ):
             return
         key = command if command.isdigit() else _ALG_EQUIVALENT.get(command)

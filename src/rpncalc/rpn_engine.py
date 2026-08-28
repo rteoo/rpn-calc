@@ -153,7 +153,7 @@ class RpnEngine:
             key in _DIGITS
             or key in (".", "eex", "enter", "spc", "backspace", "chs",
                        "clear", "clear_entry", "undo", "pi", "e", "sum_plus",
-                       "mean", "clear_sigma")
+                       "mean", "sigma_sum", "clear_sigma")
             or key in self._UNARY_METHODS
             or key in self._BINARY_METHODS
             or key in self._STACK_COMMANDS
@@ -598,6 +598,8 @@ class RpnEngine:
             self._fn_sum_plus()
         elif key == "mean":
             self._fn_mean()
+        elif key == "sigma_sum":
+            self._fn_sigma_sum()
         elif key == "clear_sigma":
             self._clear_stats()
         elif key == "drop":
@@ -697,6 +699,17 @@ class RpnEngine:
         self._stats_sy += y
         self.stack.pop()
         self.stack.push(float(self._stats_n))
+
+    def _fn_sigma_sum(self) -> None:
+        """Σ: Σx into level 1, Σy into level 2, as the 12C's RCL Σ+ leaves them.
+
+        The reason the accumulator exists. MEAN is Σ divided by n, not the
+        other way round, so this is the more basic of the two readbacks.
+        """
+        if self._stats_n == 0:
+            raise CalcError("Statistics Error")
+        self.stack.push(self._stats_sy)
+        self.stack.push(self._stats_sx)
 
     def _fn_mean(self) -> None:
         """MEAN: x̄ into level 1, ȳ into level 2, as the 12C's x̄ leaves them."""

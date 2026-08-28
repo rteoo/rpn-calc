@@ -132,9 +132,15 @@ Other deliberate deviations:
 - trig is off the face and has no keyboard binding either; the engine keeps it
   for the tests and the oracle;
 - `Σ+` accumulates a (y, x) pair 12C-style — x from level 1, y read from level 2
-  but *not* consumed — and leaves n in level 1. Shift-`1/X` is MEAN (x̄ into
-  level 1, ȳ into level 2) and shift-`ON` is CLΣ. The accumulator rides in the
-  UNDO snapshot, so one UNDO takes a Σ+ back whole;
+  but *not* consumed — and leaves n in level 1. **An accumulator needs its
+  readbacks on the face or it is write-only state**: shift-`+` is Σ (Σx into
+  level 1, Σy into level 2, the 12C's `RCL Σ+`), shift-`Σ+` is MEAN (the same
+  two divided by n), and shift-`ON` is CLΣ. Σ is the primary one — MEAN is Σ
+  over n, not the reverse — and shipping MEAN without it left "what do these
+  add up to" unanswerable. `x!` sits on shift-`1/X` because those three took
+  the slots. Only n, Σx and Σy are accumulated, so there is no standard
+  deviation and no linear regression; the 12C has both. The accumulator rides
+  in the UNDO snapshot, so one UNDO takes a Σ+ back whole;
 - the soft-menu labels are themselves the buttons; `F1`–`F6` press them from the keyboard.
 
 Anything drawn rather than typeset (shift arrow, direction arrows, the backspace
