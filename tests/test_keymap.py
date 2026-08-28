@@ -62,9 +62,14 @@ class TestShiftPlanes:
             ("pv", Shift.NONE, "fin_pv"),
             ("pv", Shift.RIGHT, "fin_npv"),
             ("percent", Shift.RIGHT, "delta_percent"),
-            ("sum", Shift.RIGHT, "fact"),
             ("sum", Shift.NONE, "sum_plus"),
-            ("inv", Shift.RIGHT, "mean"),
+            ("sum", Shift.RIGHT, "sigma_minus"),
+            ("plus", Shift.NONE, "+"),
+            ("plus", Shift.RIGHT, "sigma_sum"),
+            ("minus", Shift.RIGHT, "mean"),
+            ("multiply", Shift.RIGHT, "median"),
+            ("divide", Shift.RIGHT, "stddev"),
+            ("inv", Shift.RIGHT, "fact"),
             ("on", Shift.RIGHT, "clear_sigma"),
         ],
     )
@@ -78,6 +83,9 @@ class TestShiftPlanes:
         assert KEYS_BY_ID["up"].right_label == "FINANCE"
         assert KEYS_BY_ID["pow"].left_action == "exp"
         assert KEYS_BY_ID["sqrt"].left_action == "xroot"
+        # y√x, not ⁿ√y: the legend spells the stack
+        # left to right, level 2 then level 1, the same way y^x beside it does.
+        assert KEYS_BY_ID["sqrt"].left_label == "y√x"
         assert KEYS_BY_ID["eex"].right_action == "alog"
         assert KEYS_BY_ID["backspace"].right_label == "CLEAR"
 
@@ -105,9 +113,16 @@ class TestShiftState:
         assert resolve("shift", state) is None
 
     def test_shift_is_spent_even_on_an_unbound_plane(self):
+        # Whichever key that happens to be: the faceplate has filled three
+        # empty planes in as many changes, and this test is about the shift
+        # state machine, not about which cap is currently bare.
+        bare = next(
+            key.key_id for key in KEYS_BY_ID.values()
+            if key.action_for(Shift.RIGHT) is None
+        )
         state = ShiftState()
         resolve("shift", state)
-        assert resolve("divide", state) is None  # no shifted plane on ÷
+        assert resolve(bare, state) is None
         assert state.shift is Shift.NONE
 
     def test_clear_disarms(self):
@@ -129,7 +144,7 @@ class TestKeymapEngineContract:
         engine = RpnEngine()
         # Clipboard and the FINANCE screen toggle live on the backend, not
         # the pure engine — the contract accepts those as resolved elsewhere.
-        backend_only = {"copy", "cut", "paste", "finance", "shift"}
+        backend_only = {"copy", "cut", "paste", "finance", "settings", "shift"}
         bound = {
             action
             for key in KEYS_BY_ID.values()
@@ -162,10 +177,23 @@ class TestNoLegendIsStranded:
                 f"{key.key_id} draws a shift legend that does nothing"
             )
 
-    def test_the_statistics_trio_is_all_on_the_face(self):
-        """Σ+ is only useful with something that reads the totals back."""
+    def test_every_statistics_key_is_on_the_face(self):
+        """Σ+ is only useful with something that reads the totals back.
+
+        Σ is the primary readback - it is the sum the accumulator exists to
+        collect, and MEAN is that divided by n. Shipping Σ+ and MEAN without
+        Σ left the obvious question unanswerable on the face.
+        """
         assert KEYS_BY_ID["sum"].action == "sum_plus"
-        assert KEYS_BY_ID["inv"].left_action == "mean"
+        assert KEYS_BY_ID["sum"].left_action == "sigma_minus"
         assert KEYS_BY_ID["on"].right_action == "clear_sigma"
-        assert KEYS_BY_ID["inv"].left_label == "MEAN"
-        assert KEYS_BY_ID["on"].right_label == "CLΣ"
+        assert KEYS_BY_ID["inv"].left_action == "fact"
+
+    def test_the_operator_column_is_the_readback_plane(self):
+        """One rule to remember: shifted, the operators read the sample out."""
+        assert KEYS_BY_ID["plus"].left_action == "sigma_sum"
+        assert KEYS_BY_ID["minus"].left_action == "mean"
+        assert KEYS_BY_ID["multiply"].left_action == "median"
+        assert KEYS_BY_ID["divide"].left_action == "stddev"
+        assert [KEYS_BY_ID[k].left_label for k in
+                ("plus", "minus", "multiply", "divide")] == ["Σ", "MEAN", "MED", "STD"]

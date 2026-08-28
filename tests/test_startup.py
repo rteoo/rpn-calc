@@ -11,6 +11,8 @@ enter the event loop.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from PySide6.QtCore import QRect, QSettings
 from PySide6.QtGui import QFontDatabase, QGuiApplication, QIcon
@@ -676,14 +678,16 @@ class TestSettingsMenu:
         from PySide6.QtCore import QObject
 
         started = start([])
+        started.backend.pressCommand("settings")
         item = started.window.findChild(QObject, "calculatorKeyItem")
         assert item is not None
         assert item.property("text") == "Launch on the calculator key"
 
-    def test_display_locale_items_are_on_the_menu(self, clean_settings):
+    def test_display_locale_items_are_on_the_panel(self, clean_settings):
         from PySide6.QtCore import QObject
 
         started = start([])
+        started.backend.pressCommand("settings")
         decimal = started.window.findChild(QObject, "decimalCommaItem")
         thousands = started.window.findChild(QObject, "thousandsItem")
         assert decimal is not None and thousands is not None
@@ -692,20 +696,16 @@ class TestSettingsMenu:
         assert decimal.property("checked") is False
         assert thousands.property("checked") is False
 
-    def test_the_popup_is_wider_than_the_longest_label(self, clean_settings):
+    def test_the_settings_panel_is_on_the_display(self, clean_settings):
         from PySide6.QtCore import QObject
-        from PySide6.QtGui import QFontMetrics
 
         started = start([])
-        menu = started.window.findChild(QObject, "settingsMenu")
-        item = started.window.findChild(QObject, "calculatorKeyItem")
-        assert menu is not None and item is not None
-
-        font = item.property("font")
-        metrics = QFontMetrics(font)
-        widest = max(metrics.horizontalAdvance(label) for label in self.LABELS)
-        em = font.pixelSize() if font.pixelSize() > 0 else max(1, round(font.pointSizeF() * 4 / 3))
-        assert menu.property("width") >= widest + em
+        view = started.window.findChild(QObject, "settingsView")
+        assert view is not None
+        assert view.property("visible") is False
+        started.backend.pressCommand("settings")
+        assert view.property("visible") is True
+        assert started.backend.settingsOpen is True
 
 
 class TestKeypadGeometry:
@@ -803,3 +803,132 @@ class TestKeypadGeometry:
     def test_the_face_carries_every_key_the_keymap_declares(self, rows):
         rendered = [key_id for row in rows for key_id, _, _ in row]
         assert rendered == [key.key_id for row in KEY_ROWS for key in row]
+
+
+class TestKeycapLabels:
+    """Rendered captions, because the two failure modes here are both silent.
+
+    iA Writer Mono carries exactly one Greek letter (π) and no superscripts.
+    A missing glyph does not raise - it draws an empty box - so `Σ+` shipped
+    to a real desktop reading `▯+`, and every headless test passed. `CapText`
+    draws Σ and Δ and marks superscripts up as rich text; these check that the
+    face only ever asks for glyphs one of those two paths can actually deliver.
+    """
+
+    def captions(self, window, app):
+        """Every CapText on the face: (caption, rendered pixel size)."""
+        from PySide6.QtCore import QObject
+        from PySide6.QtQml import QQmlExpression, qmlContext
+
+        window.setProperty("width", 420)
+        window.setProperty("height", 820)
+        # Canvas paints are deferred, and one pass is not enough to flush the
+        # drawn glyphs - a single processEvents renders the face with every Σ
+        # missing, which is a convincing-looking lie.
+        for _ in range(8):
+            app.processEvents()
+
+        def repeaters(obj, found):
+            for child in obj.children():
+                if child.metaObject().className() == "QQuickRepeater":
+                    found.append(child)
+                repeaters(child, found)
+            return found
+
+        def item_at(repeater, index):
+            expression = QQmlExpression(
+                qmlContext(repeater), repeater, f"itemAt({index})"
+            )
+            value, _ = expression.evaluate()
+            return value
+
+        keypad = next(
+            r for r in repeaters(window, [])
+            if r.property("count") == len(KEY_ROWS)
+        )
+        found = {}
+        # Read off a live CapText rather than restated here: a copy of the
+        # list in this file would keep passing after CapText stopped drawing
+        # them, which is the bug these tests exist to catch.
+        self.drawn = set()
+        for row_index in range(keypad.property("count")):
+            row = item_at(keypad, row_index)
+            inner = repeaters(row, [])[0]
+            for column in range(inner.property("count")):
+                button = item_at(inner, column)
+                captions = [
+                    child for child in button.findChildren(QObject)
+                    if child.property("caption")
+                ]
+                for child in captions:
+                    # A QML list property arrives as a QJSValue, not a list.
+                    glyphs = child.property("drawnGlyphs")
+                    if glyphs is not None and hasattr(glyphs, "toVariant"):
+                        glyphs = glyphs.toVariant()
+                    self.drawn |= set(glyphs or [])
+                found[button.property("keyValue")] = [
+                    (c.property("caption"), c.property("pixelSize"))
+                    for c in captions
+                ]
+        return found
+
+    @pytest.fixture
+    def captioned(self, started, qt_app):
+        found = self.captions(started.window, qt_app)
+        assert found, "no keycaps were rendered"
+        return found
+
+    @staticmethod
+    def cap_size(entries):
+        """The largest caption on a key is its cap; the rest are legends."""
+        return max(size for _, size in entries)
+
+    def test_a_superscript_cap_is_not_shrunk_by_its_own_markup(self, captioned):
+        """The cap auto-sizes by dividing width by the caption's length.
+
+        `y<sup>x</sup>` is fifteen characters long and three characters wide;
+        measuring the markup shrank the key to a fifth of its neighbours.
+        """
+        marked = self.cap_size(captioned["pow"])      # y<sup>x</sup>
+        plain = self.cap_size(captioned["sqrt"])      # √x, same width, no tags
+        assert marked == plain, (
+            f"y^x cap renders at {marked}px against {plain}px for √x - the "
+            "auto-size is counting markup characters again"
+        )
+
+    def test_a_superscript_legend_keeps_its_exponent(self, captioned):
+        """Qt cannot elide rich text; asking for it truncated `eˣ` to `e`."""
+        legends = dict(captioned["pow"]) | dict(captioned["eex"])
+        assert "e<sup>x</sup>" in legends
+        assert "10<sup>x</sup>" in legends
+
+    def test_every_caption_can_actually_be_drawn(self, captioned):
+        """Either the font has the glyph, or CapText draws it itself."""
+        from PySide6.QtGui import QFont, QRawFont
+
+        raw = QRawFont.fromFont(QFont("iA Writer Mono S", 20))
+        drawn = self.drawn
+        missing = {}
+        for key, entries in captioned.items():
+            for caption, _ in entries:
+                for char in re.sub(r"<[^>]*>", "", caption):
+                    if char in " 	" or char in drawn:
+                        continue
+                    if not raw.supportsCharacter(ord(char)):
+                        missing.setdefault(char, set()).add(key)
+        assert not missing, (
+            "these captions use glyphs iA Writer Mono does not have and "
+            "CapText does not draw, so they render as empty boxes: "
+            f"{ {c: sorted(k) for c, k in missing.items()} }"
+        )
+
+    def test_the_drawn_glyphs_are_the_ones_the_font_is_missing(self, captioned):
+        """Drawing a glyph the font has would be pointless indirection."""
+        from PySide6.QtGui import QFont, QRawFont
+
+        raw = QRawFont.fromFont(QFont("iA Writer Mono S", 20))
+        assert self.drawn, "CapText draws nothing; Σ and Δ would be boxes"
+        for glyph in self.drawn:
+            assert not raw.supportsCharacter(ord(glyph)), (
+                f"{glyph!r} is in the font now; draw it as text instead"
+            )

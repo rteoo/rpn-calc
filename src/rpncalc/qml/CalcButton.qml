@@ -32,6 +32,12 @@ Item {
             base.b + (tint.b - base.b) * amount, 1);
     }
 
+    // Markup and drawn glyphs both live in CapText; this is only for the
+    // accessible name, which must not read out "y less-than sup greater-than".
+    function plainTextOf(caption) {
+        return caption.replace(/<[^>]*>/g, "");
+    }
+
     // An armed shift brightens its own legends and pushes the other plane back,
     // so the next keypress can be read off the face instead of from memory.
     function legendOpacity(plane) {
@@ -47,28 +53,30 @@ Item {
         anchors.right: parent.right
         height: Math.round(control.legendPixelSize * 1.5)
 
-        Text {
+        CapText {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(implicitWidth, parent.width * 0.55)
-            text: control.labelLeft
-            color: control.rightShiftColor
+            height: parent.height
+            caption: control.labelLeft
+            horizontalAlignment: Text.AlignLeft
+            maxWidth: parent.width * 0.55
+            inkColor: control.rightShiftColor
             opacity: control.legendOpacity("right")
-            elide: Text.ElideRight
-            font.family: "iA Writer Mono S"
-            font.pixelSize: control.legendPixelSize
+            pixelSize: control.legendPixelSize
         }
 
-        Text {
+        CapText {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(implicitWidth, parent.width * 0.55)
-            text: control.labelRight
-            color: control.rightShiftColor
+            height: parent.height
+            caption: control.labelRight
+            horizontalAlignment: Text.AlignRight
+            maxWidth: parent.width * 0.55
+            inkColor: control.rightShiftColor
             opacity: control.legendOpacity("right")
-            elide: Text.ElideRight
-            font.family: "iA Writer Mono S"
-            font.pixelSize: control.legendPixelSize
+            pixelSize: control.legendPixelSize
         }
     }
 
@@ -103,22 +111,23 @@ Item {
             ? control.rightShiftColor
             : control.mixColors(control.pageColor, control.inkColor, 0.13)
 
-        Text {
+        CapText {
             anchors.left: parent.left
             anchors.leftMargin: Math.round(parent.width * 0.04)
             anchors.right: parent.right
             anchors.rightMargin: Math.round(parent.width * 0.04)
             anchors.verticalCenter: parent.verticalCenter
-            horizontalAlignment: Text.AlignHCenter
             visible: control.iconName === "" && control.kind !== "shift_right"
                      && control.label !== ""
-            text: control.label
-            color: cap.capInk
-            elide: Text.ElideRight
-            font.family: "iA Writer Mono S"
-            font.pixelSize: Math.round(Math.min(
+            caption: control.label
+            inkColor: cap.capInk
+            maxWidth: width
+            // Measured on the glyphs, not the markup: `y<sup>x</sup>` is
+            // fifteen characters long and three characters wide, and dividing
+            // by the former shrank the cap to a fifth of its neighbours.
+            pixelSize: Math.round(Math.min(
                 parent.height * 0.44,
-                width / Math.max(1, control.label.length) / 0.62))
+                width / Math.max(1, plainText.length) / 0.62))
         }
 
         // iA Writer Mono has no double-arrow glyph, so the shift keys get their
@@ -269,7 +278,8 @@ Item {
         if (label === "−") return "Subtract";
         if (label === "+") return "Add";
         if (label === "+/−") return "Change sign";
-        return label;
+        // Markup would otherwise be read out as "y less-than sup greater-than".
+        return plainTextOf(label);
     }
     Accessible.onPressAction: activated()
 }

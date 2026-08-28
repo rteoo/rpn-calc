@@ -65,8 +65,9 @@ With the browser closed, the horizontal arrows are stack commands: **`▶` swaps
 levels 1 and 2**, and **`◀` rotates the top three** so level 3 comes down to
 level 1. Neither opens the browser.
 
-Press `▲` (or `MENU`) to open the 50g's stack browser. A cursor walks the levels and the
+Press `▲` to open the 50g's stack browser. A cursor walks the levels and the
 soft menu acts on the one it sits on — the fastest way to reorganise a deep stack.
+`MENU` opens SETTINGS (display locale and the calculator-key toggle).
 
 | | |
 |---|---|
@@ -99,15 +100,18 @@ remember it.
 | `+ - * /` `^` `%` | Arithmetic, power, percent |
 | `s` / `e` | Change sign / exponent (EEX) |
 | `x` / `r` / `d` | SWAP / ROT / DROP |
-| `Esc` / `Del` | Clear the stack / cancel the entry |
+| `Del` | CLEAR — empty the stack |
+| `Esc` | ON — cancel the command line |
 | `↑` | Open the interactive stack |
 | `←` `→` | Rotate the top three / swap levels 1 and 2 |
 | `F1`–`F6` | Interactive stack soft menu |
 | `Alt+s` `Alt+q` `Alt+l` `Alt+e` `Alt+g` `Alt+i` `Alt+p` `Alt+a` | √, x², LN, e^x, LOG, 1/x, π, ABS |
 | `Ctrl+Z` / `⌘Z` | Undo |
+| `Ctrl+X` / `⌘X` | Cut (copy level 1, then DROP) |
+| `Ctrl+C` / `⌘C` | Copy |
+| `Ctrl+V` / `⌘V` | Paste a number |
 | `Ctrl+M` / `⌘M` | Toggle RPN / ALG |
-| `Ctrl+C` / `⌘C`, `Ctrl+V` / `⌘V` | Copy / paste a number |
-| `Ctrl+,` / `⌘,` | Settings (right-click the display, or press and hold on a touch screen) |
+| `Ctrl+,` / `⌘,` | Settings (same as face `MENU`) |
 
 ## Building a desktop app
 
