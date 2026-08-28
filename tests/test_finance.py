@@ -523,6 +523,74 @@ class TestStatisticsRegisters:
         e.press("mean")
         assert e.stack.peek(1) == pytest.approx((4 + 6 + 1 + 1) / 4)
 
+    def test_sigma_returns_the_running_totals(self):
+        """The whole point of the accumulator: read the sum back out."""
+        e = RpnEngine()
+        for value in ("12", "30", "5", "3"):
+            e.press("clear")
+            for char in value:
+                e.press(char)
+            e.press("sum_plus")
+        e.press("clear")
+        e.press("sigma_sum")
+        assert e.stack.peek(1) == pytest.approx(50.0)   # Σx into level 1
+        assert e.stack.peek(2) == pytest.approx(0.0)    # Σy, untouched here
+
+    def test_sigma_returns_both_totals_for_paired_data(self):
+        e = RpnEngine()
+        for y, x in ((10, 1), (20, 2), (30, 3)):
+            e.stack.clear()
+            e.stack.push(float(y))
+            e.stack.push(float(x))
+            e.press("sum_plus")
+        e.stack.clear()
+        e.press("sigma_sum")
+        assert e.stack.peek(1) == pytest.approx(6.0)    # Σx
+        assert e.stack.peek(2) == pytest.approx(60.0)   # Σy
+
+    def test_mean_is_sigma_over_n(self):
+        """The two readbacks have to agree, or one of them is lying."""
+        e = RpnEngine()
+        for value in (3.5, -2.0, 11.25, 0.75):
+            e.stack.clear()
+            e.stack.push(value)
+            e.press("sum_plus")
+        e.stack.clear()
+        e.press("sigma_sum")
+        total = e.stack.peek(1)
+        e.stack.clear()
+        e.press("mean")
+        assert e.stack.peek(1) == pytest.approx(total / 4)
+
+    def test_sigma_without_any_data_errors(self):
+        e = RpnEngine()
+        e.press("sigma_sum")
+        assert e.error == "Statistics Error"
+        assert e.stack.depth == 0
+
+    def test_clear_sigma_forgets_the_totals_too(self):
+        e = RpnEngine()
+        for k in ("4", "sum_plus"):
+            e.press(k)
+        e.press("clear_sigma")
+        e.press("sigma_sum")
+        assert e.error == "Statistics Error"
+
+    def test_undo_rolls_the_totals_back_with_the_pair(self):
+        e = RpnEngine()
+        for k in ("4", "0", "sum_plus"):
+            e.press(k)
+        e.press("clear")
+        e.press("sigma_sum")
+        assert e.stack.peek(1) == pytest.approx(40.0)
+        e.press("clear")
+        for k in ("2", "sum_plus"):
+            e.press(k)
+        e.press("undo")
+        e.press("clear")
+        e.press("sigma_sum")
+        assert e.stack.peek(1) == pytest.approx(40.0)  # the 2 went back
+
     def test_mean_without_any_data_errors(self):
         e = RpnEngine()
         e.press("mean")

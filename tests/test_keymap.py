@@ -62,9 +62,11 @@ class TestShiftPlanes:
             ("pv", Shift.NONE, "fin_pv"),
             ("pv", Shift.RIGHT, "fin_npv"),
             ("percent", Shift.RIGHT, "delta_percent"),
-            ("sum", Shift.RIGHT, "fact"),
             ("sum", Shift.NONE, "sum_plus"),
-            ("inv", Shift.RIGHT, "mean"),
+            ("sum", Shift.RIGHT, "mean"),
+            ("plus", Shift.NONE, "+"),
+            ("plus", Shift.RIGHT, "sigma_sum"),
+            ("inv", Shift.RIGHT, "fact"),
             ("on", Shift.RIGHT, "clear_sigma"),
         ],
     )
@@ -162,10 +164,18 @@ class TestNoLegendIsStranded:
                 f"{key.key_id} draws a shift legend that does nothing"
             )
 
-    def test_the_statistics_trio_is_all_on_the_face(self):
-        """Σ+ is only useful with something that reads the totals back."""
+    def test_every_statistics_key_is_on_the_face(self):
+        """Σ+ is only useful with something that reads the totals back.
+
+        Σ is the primary readback - it is the sum the accumulator exists to
+        collect, and MEAN is that divided by n. Shipping Σ+ and MEAN without
+        Σ left the obvious question unanswerable on the face.
+        """
         assert KEYS_BY_ID["sum"].action == "sum_plus"
-        assert KEYS_BY_ID["inv"].left_action == "mean"
+        assert KEYS_BY_ID["sum"].left_action == "mean"
+        assert KEYS_BY_ID["sum"].left_label == "MEAN"
+        assert KEYS_BY_ID["plus"].left_action == "sigma_sum"
+        assert KEYS_BY_ID["plus"].left_label == "Σ"
         assert KEYS_BY_ID["on"].right_action == "clear_sigma"
-        assert KEYS_BY_ID["inv"].left_label == "MEAN"
         assert KEYS_BY_ID["on"].right_label == "CLΣ"
+        assert KEYS_BY_ID["inv"].left_action == "fact"  # x! moved off MEAN

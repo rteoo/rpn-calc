@@ -80,11 +80,11 @@ KEY_ROWS: tuple[tuple[Key, ...], ...] = (
         _k("log", "log x", "log", left_label="ln x", left_action="ln"),
         _k("sq", "x\u00b2", "sq", left_label="e", left_action="e"),
         _k("chs", "+/\u2212", "chs", left_label="\u03c0", left_action="pi"),
-        _k("inv", "1/X", "inv", left_label="MEAN", left_action="mean"),
+        _k("inv", "1/X", "inv", left_label="x!", left_action="fact"),
         _k("divide", "\u00f7", "/", style="operator"),
     ),
     (
-        _k("sum", "\u03a3+", "sum_plus", left_label="x!", left_action="fact"),
+        _k("sum", "\u03a3+", "sum_plus", left_label="MEAN", left_action="mean"),
         _k("7", "7", "7"),
         _k("8", "8", "8"),
         _k("9", "9", "9"),
@@ -102,7 +102,8 @@ KEY_ROWS: tuple[tuple[Key, ...], ...] = (
         _k("1", "1", "1"),
         _k("2", "2", "2"),
         _k("3", "3", "3"),
-        _k("plus", "+", "+", style="operator"),
+        _k("plus", "+", "+", left_label="Σ", left_action="sigma_sum",
+           style="operator"),
     ),
     (
         _k("on", "ON", "clear_entry", right_label="CLΣ",
