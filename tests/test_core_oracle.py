@@ -107,7 +107,8 @@ class TestRoots:
     @pytest.mark.parametrize("x", [8.0, 27.0, 1000.0, 2.0, 0.5])
     @pytest.mark.parametrize("degree", [2.0, 3.0, 5.0])
     def test_xroot(self, x, degree):
-        check("xroot", oracle.power(x, 1.0 / degree), x, degree)
+        # y√x: the index goes in level 2, the radicand in level 1.
+        check("xroot", oracle.power(x, 1.0 / degree), degree, x)
 
     def test_sqrt_and_square_round_trip(self):
         for x in POSITIVE:
@@ -386,8 +387,8 @@ class TestDomainsAndErrors:
             ("/", (0.0, 0.0), "Undefined Result"),
             ("mod", (5.0, 0.0), "Infinite Result"),
             ("pow", (-2.0, 0.5), "Invalid Input"),
-            ("xroot", (4.0, 0.0), "Infinite Result"),
-            ("xroot", (-4.0, 2.0), "Invalid Input"),
+            ("xroot", (0.0, 4.0), "Infinite Result"),   # a zeroth root
+            ("xroot", (2.0, -4.0), "Invalid Input"),    # even root of < 0
         ],
     )
     def test_error_leaves_the_stack_exactly_as_it_was(self, command, operands, message):
