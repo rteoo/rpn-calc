@@ -335,14 +335,33 @@ def test_percent_consumes_both_operands() -> None:
 
 
 def test_xroot_takes_the_nth_root() -> None:
+    # y√x reads left to right off the stack: the index is level 2 and the
+    # radicand is level 1, so the cube root of 27 is "3 ENTER 27".
     e = new_engine()
-    press(e, "2 7 enter 3 xroot")
+    press(e, "3 enter 2 7 xroot")
     assert e.stack.peek(1) == pytest.approx(3.0)
 
     # Odd roots of a negative are real; a complex result would be a domain error.
     e = new_engine()
-    press(e, "8 chs enter 3 xroot")
+    press(e, "3 enter 8 chs xroot")
     assert e.stack.peek(1) == pytest.approx(-2.0)
+
+
+def test_xroot_reads_the_stack_the_way_its_legend_reads() -> None:
+    """The operand order is the whole point of the `y√x` relabel.
+
+    Under the old `ⁿ√y` the operands were the other way round, so a silent
+    swap here would still look plausible: both orders give 3 for the cube
+    root of 27 only because 27 and 3 are not interchangeable anywhere else.
+    These two pin the direction.
+    """
+    e = new_engine()
+    press(e, "2 enter 6 4 xroot")      # index 2, radicand 64
+    assert e.stack.peek(1) == pytest.approx(8.0)
+
+    e = new_engine()
+    press(e, "6 4 enter 2 xroot")      # index 64, radicand 2 - the other way
+    assert e.stack.peek(1) == pytest.approx(2.0 ** (1.0 / 64.0))
 
 
 def test_clear_entry_spares_the_stack() -> None:

@@ -126,20 +126,52 @@ Finance shows up in two places:
   On the Begin/End row there is nothing to type, so ENTER toggles it.
 
 Other deliberate deviations:
-- `MENU` opens the interactive stack browser (same as `▲`);
+- **`y√x` reads the stack left to right**, index in level 2 and radicand in
+  level 1, the same way the `y^x` cap beside it does. A real 50g's XROOT takes
+  them the other way round and legends it `ⁿ√y`, which spells the stack
+  backwards; matching the label was worth the deviation. `3 ENTER 27` is 3;
+- `MENU` opens the on-screen SETTINGS panel; `▲` opens the interactive stack browser;
 - `ON` cancels the command line; shift-`←` is CLEAR (empty the stack);
 - ENTER spans two columns; there is no SPC key on the face (keyboard Space still works);
 - trig is off the face and has no keyboard binding either; the engine keeps it
   for the tests and the oracle;
 - `Σ+` accumulates a (y, x) pair 12C-style — x from level 1, y read from level 2
-  but *not* consumed — and leaves n in level 1. Shift-`1/X` is MEAN (x̄ into
-  level 1, ȳ into level 2) and shift-`ON` is CLΣ. The accumulator rides in the
-  UNDO snapshot, so one UNDO takes a Σ+ back whole;
+  but *not* consumed — and leaves n in level 1; shift-`Σ+` is `Σ−`, which takes
+  one back out. **An accumulator needs its readbacks on the face or it is
+  write-only state**, so the shifted operator column *is* the readback plane:
+  `+`→Σ, `−`→MEAN, `×`→MED, `÷`→STD, each landing x in level 1 and y in level 2.
+  Shift-`ON` is CLΣ, and `x!` sits on shift-`1/X` because the stats took the
+  other slots. Σ is the primary readback — MEAN is Σ over n, not the reverse.
+  Unlike a 12C, `Σ−` refuses a pair that was never accumulated rather than
+  driving the totals somewhere no data could put them. STD is the sample form
+  (n−1) and so needs two points where MEAN and MED need one. No linear
+  regression and no `Σx²`-style summary registers.
 - the soft-menu labels are themselves the buttons; `F1`–`F6` press them from the keyboard.
 
 Anything drawn rather than typeset (shift arrow, direction arrows, the backspace
-icon, the stack cursor) is drawn because iA Writer Mono has no glyph for it. Check
-before adding a symbol to a cap — the font is missing more than you would expect.
+icon, the stack cursor, **Σ and Δ**) is drawn because iA Writer Mono has no glyph
+for it. Check before adding a symbol to a cap — the font is missing more than you
+would expect: **the whole Greek alphabet except π, and every superscript.**
+
+`CapText.qml` owns all three caption paths, and a caption uses exactly one:
+- **drawn** — Σ and Δ, per character, on a Canvas. Only reasonable because the
+  face is monospaced, so every cell is one advance wide.
+- **rich text** — `y<sup>x</sup>`, `e<sup>x</sup>`, `10<sup>x</sup>`, which
+  raise the font's own `x` since U+02E3 is not there. Two traps: the cap
+  auto-sizes by dividing its width by the caption's *length*, so it must
+  measure the tag-stripped text or a superscript cap comes out a fifth the
+  size of its neighbours; and **Qt cannot elide rich text**, so asking it to
+  silently truncated `eˣ` to a bare `e`.
+- **plain text** — everything else, the cheap path.
+
+**A missing glyph does not raise. It draws an empty box**, which no headless
+test notices — `Σ+` reached a real desktop reading `▯+`, and `Δ%` as `▯%`.
+`tests/test_startup.py::TestKeycapLabels` renders the real face and fails on
+any caption whose glyphs the font lacks and `CapText` does not draw; it reads
+the drawn list off a live `CapText` rather than restating it, because a copy
+would keep passing after the drawing stopped. **Canvas paints are deferred** —
+one `processEvents` renders the face with every Σ missing, which looks
+convincing and is a lie; the fixture pumps eight.
 
 ## The keyboard's calculator key
 
@@ -162,10 +194,8 @@ nothing to outrank.
   subkey. The live `AppKey\18` is the user's actual desktop setting - a test run
   that writes it has broken something outside the repo.
 - Releasing the key leaves a value pointing at *another* application alone.
-- The toggle lives in a context menu on the display (right-click, `Ctrl+,` /
-  `⌘,`, or a long-press on a touch screen).
-  The faceplate is a fixed 50g replica with no room for a settings key, and
-  inventing one would be a deviation the Faceplate section would have to defend.
+- The toggle lives on the SETTINGS panel opened by `MENU` (or `Ctrl+,` /
+  `⌘,`). Dimmed where there is no registry to write.
 
 ## Apple platforms
 
@@ -272,6 +302,23 @@ Two rules for this area:
   is the number the engine actually held; the second is its shortest printed
   form. Asking what the engine should have returned for a number it never had
   produces failures that are the test's fault.
+- **The statistics keep every point, not running totals.** MEDIAN cannot be
+  recovered from any set of sums, so `_stats` is a list of (x, y) pairs — which
+  also buys STD a much better algorithm. Three forms, worst first: `Σx² - n·x̄²`
+  returns **exactly 0.0** for `1e9, 1e9+1, 1e9+2`, whose spread is 1; plain
+  two-pass drifts in the ninth digit on a tight cluster far from zero, because
+  the mean itself is not representable; the **corrected** two-pass used here
+  subtracts `fsum(deviations)²/n`, cancelling that bias, and matches
+  `statistics.stdev` — exact rationals — to the last bit. `tests/
+  test_core_properties.py::TestStatisticsAgainstTheStandardLibrary` is the
+  oracle, and the tight-cluster case a property run found once is pinned as an
+  example test beside it.
+- **Summarising a sample can overflow, so the readbacks go through
+  `_evaluate`** like every other function. An `OverflowError` out of a Σ near
+  the float ceiling is not one of the exceptions `press` catches — it would
+  take the window down instead of showing `Infinite Result`. For the same
+  reason `_median` halves the two middles *before* adding them: `(a + b) / 2`
+  overflows for a median that is simply one of the numbers entered.
 - **Display rounding is half away from zero**, explicitly, in `numeric._quantise`.
   Python and IEEE round half to even, which is right for sums and wrong for a
   display - a calculator shows 2.5 as 3. The three formats disagreed about this

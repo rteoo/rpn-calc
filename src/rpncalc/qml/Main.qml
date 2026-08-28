@@ -58,6 +58,12 @@ ApplicationWindow {
     // and the Super key on Linux, where the window manager has already
     // claimed Super+Q.
     Shortcut {
+        sequence: "Ctrl+X"
+        context: Qt.ApplicationShortcut
+        onActivated: backend.pressCommand("cut")
+    }
+
+    Shortcut {
         sequence: "Ctrl+C"
         context: Qt.ApplicationShortcut
         onActivated: backend.copyResult()
@@ -90,90 +96,7 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+,"
         context: Qt.ApplicationShortcut
-        onActivated: settingsMenu.popup()
-    }
-
-    // The 50g faceplate has no settings key and this window has no room to
-    // invent one, so display locale and the handful of host-side options live
-    // in a context menu on the display. Right-click it, Ctrl/⌘+comma, or
-    // press and hold on a touch screen.
-    //
-    // Material MenuItem measures itself against the style's default font and
-    // then draws with the application font, which this app scales to the
-    // desktop text scale. The popup comes out too narrow and the label elides
-    // to "Launch on th…". Size the menu from the string we actually paint,
-    // including the check indicator the style draws but does not reserve.
-    FontMetrics {
-        id: settingsMenuMetrics
-        // Follow the item's font, not win.font: Material restyles MenuItem
-        // after creation, which is how the popup was measured too narrow.
-        font: calculatorKeyItem.font
-    }
-
-    Menu {
-        id: settingsMenu
-        objectName: "settingsMenu"
-        font: calculatorKeyItem.font
-        width: {
-            var em = Math.max(1, settingsMenuMetrics.height)
-            var labels = [
-                decimalCommaItem.text,
-                thousandsItem.text,
-                calculatorKeyItem.text
-            ]
-            var widest = 0
-            for (var i = 0; i < labels.length; i++)
-                widest = Math.max(widest, settingsMenuMetrics.advanceWidth(labels[i]))
-            return Math.ceil(widest) + Math.ceil(em * 4)
-        }
-
-        MenuItem {
-            id: decimalCommaItem
-            objectName: "decimalCommaItem"
-            text: qsTr("Use comma as decimal")
-            font: win.font
-            checkable: true
-            checked: backend.decimalComma
-            onTriggered: {
-                backend.setDecimalComma(checked);
-                checked = Qt.binding(function() { return backend.decimalComma; });
-            }
-        }
-
-        MenuItem {
-            id: thousandsItem
-            objectName: "thousandsItem"
-            text: qsTr("Thousands separator")
-            font: win.font
-            checkable: true
-            checked: backend.thousandsSeparator
-            onTriggered: {
-                backend.setThousandsSeparator(checked);
-                checked = Qt.binding(function() { return backend.thousandsSeparator; });
-            }
-        }
-
-        MenuSeparator {}
-
-        MenuItem {
-            id: calculatorKeyItem
-            objectName: "calculatorKeyItem"
-            text: qsTr("Launch on the calculator key")
-            font: win.font
-            // Dimmed rather than hidden where there is no registry to write,
-            // the same way the keys this calculator cannot honour are dimmed.
-            enabled: backend.calculatorKeySupported
-            checkable: true
-            checked: backend.calculatorKeyBound
-            // Clicking a MenuItem assigns `checked` itself, which destroys the
-            // binding above; restoring it keeps the item reporting what the
-            // registry actually holds rather than what was last clicked - so a
-            // refused write shows up as the tick springing back.
-            onTriggered: {
-                backend.setCalculatorKeyBound(checked);
-                checked = Qt.binding(function() { return backend.calculatorKeyBound; });
-            }
-        }
+        onActivated: backend.pressCommand("settings")
     }
 
     Item {
@@ -235,9 +158,9 @@ ApplicationWindow {
             } else if (event.key === Qt.Key_Backspace) {
                 command = "backspace";
             } else if (event.key === Qt.Key_Delete) {
-                command = "clear_entry";
-            } else if (event.key === Qt.Key_Escape) {
                 command = "clear";
+            } else if (event.key === Qt.Key_Escape) {
+                command = "clear_entry";  // ON: cancel the command line
             } else if (event.key === Qt.Key_Space) {
                 command = "spc";
             } else if (event.text === "," || event.text === ".") {
@@ -278,25 +201,6 @@ ApplicationWindow {
             anchors.rightMargin: win.scaledSize(8)
             anchors.bottomMargin: win.scaledSize(14)
 
-            // Declared first so it sits under everything: it takes only the
-            // right button, which nothing above it accepts, and leaves the
-            // soft menu's own left-click handling untouched. A long-press is
-            // the touch equivalent of a right-click; it is restricted to
-            // actual touch screens so a Mac trackpad click-and-hold does
-            // not pop the menu.
-            MouseArea {
-                anchors.fill: parent
-                acceptedButtons: Qt.RightButton
-                onClicked: settingsMenu.popup()
-            }
-
-            TapHandler {
-                acceptedDevices: PointerDevice.TouchScreen
-                acceptedButtons: Qt.LeftButton
-                longPressThreshold: 0.5
-                onLongPressed: settingsMenu.popup()
-            }
-
             StatusBar {
                 id: statusBar
                 anchors.top: parent.top
@@ -319,7 +223,7 @@ ApplicationWindow {
                 anchors.right: parent.right
                 anchors.bottom: softMenu.showing ? softMenu.top : parent.bottom
                 anchors.bottomMargin: softMenu.showing ? win.scaledSize(6) : 0
-                visible: backend.rpnMode && !backend.financeOpen
+                visible: backend.rpnMode && !backend.financeOpen && !backend.settingsOpen
                 lines: backend.stackLines
                 commandLine: backend.commandLine
                 entering: backend.entering
@@ -337,7 +241,7 @@ ApplicationWindow {
                 anchors.right: parent.right
                 anchors.bottom: softMenu.showing ? softMenu.top : parent.bottom
                 anchors.bottomMargin: softMenu.showing ? win.scaledSize(6) : 0
-                visible: backend.rpnMode && backend.financeOpen
+                visible: backend.rpnMode && backend.financeOpen && !backend.settingsOpen
                 fields: backend.financeFields
                 cursor: backend.financeCursor
                 entry: backend.commandLine
@@ -348,12 +252,31 @@ ApplicationWindow {
                 titlePixelSize: win.scaledSize(13)
             }
 
+            SettingsView {
+                objectName: "settingsView"
+                anchors.top: statusBar.bottom
+                anchors.topMargin: win.scaledSize(6)
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: softMenu.showing ? softMenu.top : parent.bottom
+                anchors.bottomMargin: softMenu.showing ? win.scaledSize(6) : 0
+                visible: backend.settingsOpen
+                rows: backend.settingsRows
+                cursor: backend.settingsCursor
+                inkColor: win.inkColor
+                mutedColor: win.mutedColor
+                pageColor: win.pageColor
+                fontPixelSize: win.scaledSize(15)
+                titlePixelSize: win.scaledSize(13)
+                onRowActivated: function(index) { backend.activateSettingsRow(index); }
+            }
+
             SoftMenu {
                 id: softMenu
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
-                labels: backend.rpnMode ? backend.menuLabels : []
+                labels: (backend.rpnMode || backend.settingsOpen) ? backend.menuLabels : []
                 slotEnabled: backend.menuEnabled
                 pageColor: win.pageColor
                 inkColor: win.inkColor
@@ -367,7 +290,7 @@ ApplicationWindow {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
-                visible: !backend.rpnMode
+                visible: !backend.rpnMode && !backend.settingsOpen
 
                 Text {
                     anchors.top: parent.top

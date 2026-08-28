@@ -91,6 +91,7 @@ class Backend(QObject):
     calculatorKeyChanged = Signal()
     displayLocaleChanged = Signal()
     financeChanged = Signal()
+    settingsChanged = Signal()
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -101,6 +102,8 @@ class Backend(QObject):
         self._decimal_comma = False
         self._thousands_separator = False
         self._finance_open = False
+        self._settings_open = False
+        self._settings_cursor = 0
 
         self._dark_mode = True
         self._text_scale = 1.0
@@ -344,13 +347,19 @@ class Backend(QObject):
         return self._rpn.cursor_level or 0
 
     def _get_menu_labels(self) -> list:
+        if self._settings_open:
+            return ["TOGGLE", "", "DONE"]
         if self._finance_open:
-            return ["EDIT", "AMOR", "SOLVE", "", "", ""]
+            # Three keys, as on the 50g FINANCE soft menu — empty F4–F6
+            # slots used to draw blank caps over the overflowing form.
+            return ["EDIT", "AMOR", "SOLVE"]
         return self._rpn.menu_labels()
 
     def _get_menu_enabled(self) -> list:
+        if self._settings_open:
+            return [True, False, True]
         if self._finance_open:
-            return [True, False, True, False, False, False]
+            return [True, False, True]
         return self._rpn.menu_enabled()
 
     cursorLevel = Property(int, _get_cursor_level, notify=stackChanged)
@@ -360,6 +369,14 @@ class Backend(QObject):
     @Slot(int)
     def pressMenu(self, index: int) -> None:
         """A soft key, F1 to F6 left to right."""
+        if self._settings_open:
+            if index == 0:
+                self._toggle_settings_item()
+            elif index == 2:
+                self._settings_open = False
+                self.settingsChanged.emit()
+                self.stackChanged.emit()
+            return
         if not self._rpn_mode:
             return
         if self._finance_open:
@@ -455,6 +472,40 @@ class Backend(QObject):
 
     financeCursor = Property(int, _get_finance_cursor, notify=financeChanged)
 
+    def _get_settings_open(self) -> bool:
+        return self._settings_open
+
+    settingsOpen = Property(bool, _get_settings_open, notify=settingsChanged)
+
+    def _get_settings_cursor(self) -> int:
+        return self._settings_cursor
+
+    settingsCursor = Property(int, _get_settings_cursor, notify=settingsChanged)
+
+    def _settings_rows(self) -> list:
+        return [
+            {
+                "id": "decimal",
+                "label": "Use comma as decimal",
+                "checked": self._decimal_comma,
+                "enabled": True,
+            },
+            {
+                "id": "thousands",
+                "label": "Thousands separator",
+                "checked": self._thousands_separator,
+                "enabled": True,
+            },
+            {
+                "id": "launchkey",
+                "label": "Launch on the calculator key",
+                "checked": launchkey.is_bound(),
+                "enabled": launchkey.supported(),
+            },
+        ]
+
+    settingsRows = Property(list, _settings_rows, notify=settingsChanged)
+
     @Slot(str)
     def pressKeyId(self, key_id: str) -> None:
         """A press on a physical keycap, resolved through the shift planes."""
@@ -466,6 +517,12 @@ class Backend(QObject):
     @Slot(str)
     def pressCommand(self, command: str) -> None:
         """A resolved command, from the keypad or the physical keyboard."""
+        if command == "settings":
+            self._toggle_settings()
+            return
+        if self._settings_open:
+            self._press_settings(command)
+            return
         if command == "finance":
             self._toggle_finance()
             return
@@ -485,8 +542,8 @@ class Backend(QObject):
         if command in ("up", "down", "left", "right") or command.startswith("ist_"):
             return  # the stack browser has nothing to browse in algebraic mode
         if command.startswith("fin_") or command in (
-            "e", "fact", "sum_plus", "mean", "clear_sigma", "delta_percent",
-            "finance",
+            "e", "fact", "sum_plus", "sigma_minus", "mean", "sigma_sum",
+            "median", "stddev", "clear_sigma", "delta_percent", "finance", "settings",
         ):
             return
         key = command if command.isdigit() else _ALG_EQUIVALENT.get(command)
@@ -528,10 +585,64 @@ class Backend(QObject):
     def _toggle_finance(self) -> None:
         if not self._rpn_mode:
             return
+        self._settings_open = False
         self._finance_open = not self._finance_open
         if self._finance_open:
             self._rpn.cursor_level = None  # finance owns the display
         self.financeChanged.emit()
+        self.settingsChanged.emit()
+        self.stackChanged.emit()
+
+    def _toggle_settings(self) -> None:
+        self._settings_open = not self._settings_open
+        if self._settings_open:
+            self._finance_open = False
+            self._rpn.cursor_level = None
+            self._settings_cursor = 0
+        self.settingsChanged.emit()
+        self.financeChanged.emit()
+        self.stackChanged.emit()
+
+    def _press_settings(self, command: str) -> None:
+        """SETTINGS owns the keyboard while it is showing."""
+        n = len(self._settings_rows())
+        if command == "up":
+            self._settings_cursor = (self._settings_cursor - 1) % n
+        elif command == "down":
+            self._settings_cursor = (self._settings_cursor + 1) % n
+        elif command == "enter":
+            self._toggle_settings_item()
+            return
+        elif command in ("clear_entry", "settings"):
+            self._settings_open = False
+        else:
+            return
+        self.settingsChanged.emit()
+        self.stackChanged.emit()
+
+    def _toggle_settings_item(self) -> None:
+        rows = self._settings_rows()
+        if not 0 <= self._settings_cursor < len(rows):
+            return
+        row = rows[self._settings_cursor]
+        if not row["enabled"]:
+            return
+        if row["id"] == "decimal":
+            self.setDecimalComma(not self._decimal_comma)
+        elif row["id"] == "thousands":
+            self.setThousandsSeparator(not self._thousands_separator)
+        elif row["id"] == "launchkey":
+            self.setCalculatorKeyBound(not launchkey.is_bound())
+        self.settingsChanged.emit()
+
+    @Slot(int)
+    def activateSettingsRow(self, index: int) -> None:
+        """A tap on a settings row selects it and toggles."""
+        if not self._settings_open:
+            return
+        self._settings_cursor = index
+        self._toggle_settings_item()
+        self.settingsChanged.emit()
         self.stackChanged.emit()
 
     def _handle_clipboard(self, command: str) -> None:
