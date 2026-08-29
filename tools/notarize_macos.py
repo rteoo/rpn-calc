@@ -184,6 +184,12 @@ def main(argv: list[str] | None = None) -> int:
             submission_id = submit(upload, creds)
         print(f"ACCEPTED id={submission_id}")
         staple(app)
+        # The shipped zip has to be made after stapling: the ticket lives in
+        # the bundle, and the archive Apple saw does not have one.
+        archive = zip_app(app, app.parent / f"{app.name}.zip")
+        print(f"STAPLED {archive}  ({archive.stat().st_size / 1_048_576:.1f} MB)")
+        print("NOTARIZE_OK")
+        return 0
     except NotarizeError as error:
         print(f"NOTARIZE_FAIL: {error}", file=sys.stderr)
         if error.submission_id:
@@ -192,13 +198,6 @@ def main(argv: list[str] | None = None) -> int:
     except subprocess.CalledProcessError as error:
         print(f"NOTARIZE_FAIL: {error}", file=sys.stderr)
         return 1
-
-    # The shipped zip has to be made after stapling: the ticket lives in the
-    # bundle, and the archive Apple saw does not have one.
-    archive = zip_app(app, app.parent / f"{app.name}.zip")
-    print(f"STAPLED {archive}  ({archive.stat().st_size / 1_048_576:.1f} MB)")
-    print("NOTARIZE_OK")
-    return 0
 
 
 if __name__ == "__main__":
