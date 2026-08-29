@@ -210,6 +210,19 @@ class TestFaceKeys:
         assert e.finance.fv == 1
         assert e.stack.to_list() == []
 
+    def test_finance_screen_rejects_nonfinite_result_atomically(self):
+        e = RpnEngine()
+        e.finance.n = 2
+        e.finance.i = 1
+        e.finance.pv = e.finance.pmt = e.finance.fv = 1e308
+        e.finance_cursor = 2  # pv
+
+        e.finance_menu(2)
+
+        assert e.error == "Infinite Result"
+        assert e.finance.pv == 1e308
+        assert e.stack.to_list() == []
+
     def test_finance_screen_edit_and_begin_toggle(self):
         e = RpnEngine()
         e.stack.push(48.0)
@@ -311,6 +324,15 @@ class TestFaceKeys:
         assert e.error == "Infinite Result"
         assert e.stack.to_list() == []
         assert e.finance.cash_flows == before_flows
+
+    def test_npv_key_rejects_nonfinite_result(self):
+        e = RpnEngine()
+        e.finance.cash_flows = [CashFlow(1e308), CashFlow(1e308)]
+
+        e.press("fin_npv")
+
+        assert e.error == "Infinite Result"
+        assert e.stack.to_list() == []
 
     def test_nj_rejects_fractional_repetition_without_mutating_cash_flow(self):
         e = RpnEngine()
