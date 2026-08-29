@@ -551,6 +551,9 @@ class Backend(QObject):
         if self._finance_open and self._rpn_mode:
             self._press_finance(command)
             return
+        if command == "toggle_mode":
+            self.toggleEntryMode()
+            return
         if command in ("copy", "cut", "paste"):
             self._handle_clipboard(command)
             return
