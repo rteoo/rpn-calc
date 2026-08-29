@@ -934,6 +934,120 @@ class TestKeycapLabels:
             )
 
 
+class TestFinanceFormLayout:
+    """The FINANCE form's own geometry, measured off the rendered window.
+
+    Both bugs here reached a real desktop as convincing-looking screenshots.
+    The form hides the stack view, so it has to draw the command line itself
+    and it has `clip: true`; anything that does not fit is silently sliced
+    rather than reported, and no headless test of the engine sees it.
+    """
+
+    def form(self, started, app):
+        from PySide6.QtCore import QObject
+
+        started.window.setProperty("width", 420)
+        started.window.setProperty("height", 820)
+        started.backend.pressCommand("finance")
+        for _ in range(8):
+            app.processEvents()
+        view = next(
+            child for child in started.window.findChildren(QObject)
+            if child.metaObject().className().startswith("FinanceView")
+        )
+        assert view.property("visible"), "the FINANCE form did not open"
+        return view
+
+    @staticmethod
+    def column(view):
+        from PySide6.QtCore import QObject
+
+        return next(
+            child for child in view.findChildren(QObject)
+            if child.metaObject().className() == "QQuickColumnLayout"
+        )
+
+    @staticmethod
+    def texts(view):
+        from PySide6.QtCore import QObject
+
+        return [
+            child for child in view.findChildren(QObject)
+            if child.metaObject().className().startswith("QQuickText")
+            and child.property("text")
+        ]
+
+    def solve_a_long_value(self, backend, app):
+        """N=12, I%YR=12, PV=-1000 solves FV to 1126.82503013197."""
+        for key in ("1", "2", "enter"):
+            backend.pressCommand(key)
+        backend.pressCommand("down")
+        for key in ("1", "2", "enter"):
+            backend.pressCommand(key)
+        backend.pressCommand("down")
+        for key in ("1", "0", "0", "0", "chs", "enter"):
+            backend.pressCommand(key)
+        backend.pressCommand("down")
+        backend.pressCommand("down")
+        backend.pressMenu(2)
+        for _ in range(8):
+            app.processEvents()
+
+    def test_a_solved_value_does_not_run_through_its_own_label(
+        self, started, qt_app
+    ):
+        """`FV: 1126.82503013197` used to render as `FM26.82503013197`."""
+        view = self.form(started, qt_app)
+        self.solve_a_long_value(started.backend, qt_app)
+
+        shown = {t.property("text"): t for t in self.texts(view)}
+        assert "1126.82503013197" in shown, sorted(shown)
+        label, value = shown["FV:"], shown["1126.82503013197"]
+        label_right = label.mapToItem(view, label.width(), 0).x()
+        value_left = value.mapToItem(view, 0, 0).x()
+        assert value_left >= label_right, (
+            f"the value starts at {value_left:.1f} but the label runs to "
+            f"{label_right:.1f} - they overlap"
+        )
+
+    def test_the_form_fits_the_space_it_is_given(self, started, qt_app):
+        view = self.form(started, qt_app)
+        self.solve_a_long_value(started.backend, qt_app)
+        column = self.column(view)
+        assert column.property("implicitHeight") <= view.property("height"), (
+            f"the form needs {column.property('implicitHeight'):.0f}px of "
+            f"{view.property('height'):.0f} - clip: true is cutting it"
+        )
+
+    def test_it_still_fits_once_an_entry_line_opens(self, started, qt_app):
+        """The entry line and the hint used to be two rows in a one-row gap."""
+        view = self.form(started, qt_app)
+        for key in ("1", "0", "0", "0", "chs"):
+            started.backend.pressCommand(key)
+        for _ in range(8):
+            qt_app.processEvents()
+        assert started.backend.commandLine == "-1000"
+        column = self.column(view)
+        assert column.property("implicitHeight") <= view.property("height")
+
+    def test_the_entry_line_is_drawn_in_full(self, started, qt_app):
+        """It was sliced in half, which reads as a rendering glitch."""
+        view = self.form(started, qt_app)
+        for key in ("1", "0", "0", "0", "chs"):
+            started.backend.pressCommand(key)
+        for _ in range(8):
+            qt_app.processEvents()
+
+        entry = next(
+            t for t in self.texts(view) if t.property("text").startswith("-1000")
+        )
+        top = entry.mapToItem(view, 0, 0).y()
+        assert top >= 0, "the entry line starts above the form"
+        assert top + entry.property("height") <= view.property("height") + 0.5, (
+            "the entry line runs past the bottom of the form and is clipped"
+        )
+
+
 class TestSettingsPanelLayout:
     """The SETTINGS panel's geometry, measured off the rendered window.
 
