@@ -644,8 +644,10 @@ class RpnEngine:
         if key == "fin_nj":
             if self.stack.depth < 1:
                 raise StackError("Too Few Arguments")
-            times = int(self.stack.peek(1))
-            self.finance.set_nj(times)
+            times = self.stack.peek(1)
+            if not times.is_integer():
+                raise FinanceError("Nj must be between 1 and 99")
+            self.finance.set_nj(int(times))
             return
         if key == "fin_npv":
             self.stack.push(self.finance.npv())
