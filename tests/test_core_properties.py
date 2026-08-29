@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import statistics
+import sys
 from decimal import Decimal
 
 import pytest
@@ -279,6 +280,19 @@ class TestFormatting:
         text = format_number(x, NumberFormat(ENG, 3))
         exponent = int(text.split("E")[1])
         assert exponent % 3 == 0
+
+    @pytest.mark.parametrize("mode, expected", [
+        (SCI, ("1.797E308", "-1.797E308")),
+        (ENG, ("179.7E306", "-179.7E306")),
+    ])
+    def test_maximum_finite_values_stay_parseable_in_exponent_formats(
+        self, mode, expected
+    ):
+        for sign, text_expected in zip((1.0, -1.0), expected):
+            text = format_number(sign * sys.float_info.max, NumberFormat(mode, 3))
+            assert text == text_expected
+            parsed = parse_number(text)
+            assert parsed is not None and math.isfinite(parsed)
 
 
 # -- cross-engine differential ------------------------------------------------

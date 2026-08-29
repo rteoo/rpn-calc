@@ -111,6 +111,8 @@ def test_qml_keeps_windows_ctrl_shortcuts_and_settings_panel():
     assert "Meta+" not in qml
     assert "SettingsView" in qml
     assert 'backend.pressCommand("settings")' in qml
+    assert 'onActivated: backend.pressCommand("paste")' in qml
+    assert 'onActivated: backend.pressCommand("toggle_mode")' in qml
     assert "hoverEnabled: backend.hasPointerHover" in qml
     settings = (ROOT / "src/rpncalc/qml/SettingsView.qml").read_text(encoding="utf-8")
     assert "Launch on the calculator key" not in settings  # label comes from backend
