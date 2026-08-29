@@ -44,13 +44,15 @@ _ARROWS = frozenset({"up", "down", "left", "right"})
 
 
 def _mean(values: list[float]) -> float:
-    # Sum after scaling so a representable mean does not overflow in the
-    # intermediate accumulator.  Dividing before restoring the scale also
-    # keeps the normalized sum bounded by the sample count.
-    scale = max(abs(value) for value in values)
-    if scale == 0.0:
-        return 0.0
-    return scale * (math.fsum(value / scale for value in values) / len(values))
+    try:
+        return math.fsum(values) / len(values)
+    except OverflowError:
+        # Only scale after fsum overflows, preserving its ordinary rounding
+        # for the usual path while keeping a representable mean finite.
+        scale = max(abs(value) for value in values)
+        if scale == 0.0:
+            return 0.0
+        return scale * (math.fsum(value / scale for value in values) / len(values))
 
 
 def _median(values: list[float]) -> float:
