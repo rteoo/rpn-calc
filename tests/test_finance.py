@@ -297,6 +297,20 @@ class TestFaceKeys:
         assert e.error == "Nj must be between 1 and 99"
         assert e.finance.cash_flows == [CashFlow(-1000), CashFlow(100, 5)]
 
+    @pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf, 100.0])
+    def test_nj_rejects_nonfinite_or_out_of_range_values_without_mutating(self, value):
+        e = RpnEngine()
+        e.finance.cash_flows = [CashFlow(-1000), CashFlow(100, 5)]
+        e.stack.push(value)
+        before_stack = e.stack.to_list()
+        before_flows = list(e.finance.cash_flows)
+
+        e.press("fin_nj")
+
+        assert e.error == "Nj must be between 1 and 99"
+        assert e.stack.to_list() == before_stack
+        assert e.finance.cash_flows == before_flows
+
     @pytest.mark.parametrize("times", [1.0, 99.0])
     def test_nj_accepts_integer_endpoints(self, times):
         e = RpnEngine()
