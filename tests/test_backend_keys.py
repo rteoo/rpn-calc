@@ -720,3 +720,35 @@ class TestFinanceScreenOwnsTheKeyboard:
         backend.toggleEntryMode()
         backend.pressCommand("finance")
         assert not backend.financeOpen
+
+    def test_overlay_shortcuts_cannot_mutate_hidden_state(self, backend, clipboard):
+        press_commands(backend, "8 enter 9")
+        before = backend._rpn.stack.to_list()
+        clipboard.setText("42")
+
+        backend.pressCommand("finance")
+        backend.pressCommand("paste")
+        backend.pressCommand("toggle_mode")
+        assert backend._rpn.stack.to_list() == before
+        assert backend.rpnMode is True
+
+        backend.pressCommand("clear_entry")
+        backend.pressCommand("settings")
+        backend.pressCommand("paste")
+        backend.pressCommand("toggle_mode")
+        assert backend._rpn.stack.to_list() == before
+        assert backend.rpnMode is True
+
+    def test_navigation_and_clear_dismiss_a_finance_error(self, backend):
+        backend.pressCommand("finance")
+        backend._rpn.command_line = "1e"
+        backend.pressCommand("enter")
+        assert backend.errorText == "Invalid Input"
+        backend.pressCommand("down")
+        assert backend.errorText == ""
+
+        backend._rpn.command_line = "1e"
+        backend.pressCommand("enter")
+        assert backend.errorText == "Invalid Input"
+        backend.pressCommand("clear")
+        assert backend.errorText == ""

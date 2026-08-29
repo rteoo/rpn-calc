@@ -551,6 +551,9 @@ class Backend(QObject):
         if self._finance_open and self._rpn_mode:
             self._press_finance(command)
             return
+        if command == "toggle_mode":
+            self.toggleEntryMode()
+            return
         if command in ("copy", "cut", "paste"):
             self._handle_clipboard(command)
             return
@@ -844,7 +847,11 @@ class Backend(QObject):
         colors_path = Path.home() / ".local/state/omarchy/current/theme/colors.toml"
         theme_mode = ""
         if colors_path.is_file():
-            for raw_line in colors_path.read_text(encoding="utf-8").splitlines():
+            try:
+                theme_text = colors_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                theme_text = ""
+            for raw_line in theme_text.splitlines():
                 line = raw_line.strip()
                 if not line or line.startswith("#"):
                     continue
