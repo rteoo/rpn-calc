@@ -582,6 +582,54 @@ class TestFinanceScreenOwnsTheKeyboard:
         backend.pressCommand("down")
         assert backend.financeCursor == 0
 
+    def test_clear_empties_the_registers_but_keeps_the_settings(self, backend):
+        """Shift-← empties the form the way it empties the stack outside it.
+
+        P/YR and Begin/End survive: they are how the problem is configured,
+        not data entered into it, and nothing else on the face clears TVM.
+        """
+        self.open_form(backend)
+        press_commands(backend, "1 2 enter")
+        backend.pressCommand("down")
+        press_commands(backend, "9 enter")
+        backend.pressCommand("down")
+        press_commands(backend, "1 0 0 0 chs enter")
+        for _ in range(4):
+            backend.pressCommand("down")          # Begin/End
+        backend.pressCommand("enter")             # -> Begin
+        backend.pressCommand("clear")
+        values = {f["label"]: f["value"] for f in backend.financeFields}
+        assert values["N:"] == "0"
+        assert values["I%YR:"] == "0"
+        assert values["PV:"] == "0"
+        assert values["P/YR:"] == "12"            # kept
+        assert "Begin" in values                  # kept
+        assert backend.financeOpen
+
+    def test_clear_discards_a_half_typed_entry_too(self, backend):
+        self.open_form(backend)
+        press_commands(backend, "1 2 enter")
+        press_commands(backend, "5 5 5")
+        assert backend.commandLine == "555"
+        backend.pressCommand("clear")
+        assert backend.commandLine == ""
+        assert backend._rpn.finance.n == 0.0
+
+    def test_clear_reaches_the_form_from_the_real_keycaps(self, backend):
+        """Shift-← is CLEAR; the form has to answer the cap, not the command."""
+        self.open_form(backend)
+        press_commands(backend, "7 enter")
+        assert backend._rpn.finance.n == 7.0
+        press_ids(backend, "shift backspace")
+        assert backend._rpn.finance.n == 0.0
+
+    def test_clear_leaves_the_cash_flows_empty_too(self, backend):
+        press_commands(backend, "1 0 0 0 chs fin_cfo")
+        press_commands(backend, "5 0 0 fin_cfj")
+        self.open_form(backend)
+        backend.pressCommand("clear")
+        assert backend._rpn.finance.cash_flows == []
+
     def test_the_form_ignores_the_keyboard_in_algebraic_mode(self, backend):
         backend.toggleEntryMode()
         backend.pressCommand("finance")
