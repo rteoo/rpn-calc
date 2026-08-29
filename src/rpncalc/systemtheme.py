@@ -32,7 +32,7 @@ def _read_registry_dword(key_path: str, value_name: str) -> int | None:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
             value, _ = winreg.QueryValueEx(key, value_name)
             return int(value)
-    except OSError:
+    except (OSError, TypeError, ValueError):
         return None
 
 
