@@ -177,11 +177,12 @@ def period(i_pct: float, pv: float, pmt: float, fv: float, begin: bool) -> float
 
 
 def rate(n: float, pv: float, pmt: float, fv: float, begin: bool) -> float:
-    """Bisection on i (percent), matching finanx-12c / 12C behaviour."""
+    """Bisection on i (percent), matching the signed TVM equation."""
     if n == 0:
         raise FinanceError("Compound Interest Error")
-    if not any(value > 0 for value in (pv, pmt, fv)) or not any(
-        value < 0 for value in (pv, pmt, fv)
+    cash_flows = (pv, pmt, fv)
+    if not any(value > 0 for value in cash_flows) or not any(
+        value < 0 for value in cash_flows
     ):
         raise FinanceError("Compound Interest Error")
     # The payment has to actually respond to the rate, or there is no rate to
@@ -200,38 +201,48 @@ def rate(n: float, pv: float, pmt: float, fv: float, begin: bool) -> float:
         abs_tol=1e-12,
     ):
         raise FinanceError("Compound Interest Error")
-    # Keep the historical positive-rate bracket (and its first midpoint), but
-    # probe the rest of the valid domain so rates below -1% can be recovered.
-    low, high = -1.0, 99999.0
-    negative_low = -99.999999
-    try:
-        negative_value = payment(n, negative_low, pv, fv, begin) - pmt
-    except (FinanceError, ZeroDivisionError, ValueError, OverflowError):
-        negative_value = None
-    negative_high_value = payment(n, low, pv, fv, begin) - pmt
-    if negative_value is not None and negative_value * negative_high_value <= 0:
-        low, high = negative_low, -1.0
+    def residual(i_pct: float) -> float:
+        return payment(n, i_pct, pv, fv, begin) - pmt
 
-    # Payment is monotonic over either bracket, but its direction depends on
-    # the signs of PV and FV. Determine it away from the huge upper bound so a
-    # high-rate overflow still leaves the bisection usable.
-    slope = payment(n, 1.0, pv, fv, begin) - payment(n, -1.0, pv, fv, begin)
-    descending = slope < 0
+    probes = (
+        math.nextafter(-100.0, math.inf), -99.0, -90.0, -50.0, -10.0,
+        -1.0, 0.0, 1.0, 10.0, 100.0, 1000.0, 10000.0, 99999.0,
+    )
+    finite: list[tuple[float, float]] = []
+    for probe in probes:
+        try:
+            value = residual(probe)
+        except (FinanceError, ZeroDivisionError, ValueError, OverflowError):
+            continue
+        if math.isfinite(value):
+            if value == 0.0:
+                return probe
+            finite.append((probe, value))
 
-    for _ in range(10000):
+    bracket: tuple[float, float, float, float] | None = None
+    for (left, f_left), (right, f_right) in zip(finite, finite[1:]):
+        if (f_left < 0) != (f_right < 0):
+            bracket = left, right, f_left, f_right
+            break
+    if bracket is None:
+        raise FinanceError("Compound Interest Error")
+
+    low, high, f_low, _f_high = bracket
+    for _ in range(200):
         mid = (low + high) / 2.0
         try:
-            guessed = payment(n, mid, pv, fv, begin)
+            f_mid = residual(mid)
         except (FinanceError, ZeroDivisionError, ValueError, OverflowError):
-            high = mid
-            continue
-        difference = guessed - pmt
-        if abs(difference) <= 1e-9:
+            raise FinanceError("Compound Interest Error") from None
+        if f_mid == 0.0:
             return mid
-        if (difference > 0) == descending:
-            low = mid
-        else:
+        if (f_low < 0) != (f_mid < 0):
             high = mid
+        else:
+            low = mid
+            f_low = f_mid
+        if math.isclose(low, high, rel_tol=1e-12, abs_tol=1e-12):
+            return (low + high) / 2.0
     raise FinanceError("Compound Interest Error")
 
 

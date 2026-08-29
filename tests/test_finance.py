@@ -67,6 +67,49 @@ class TestTvmClosedForm:
         with pytest.raises(FinanceError, match="Compound Interest Error"):
             rate(1, -100.0, -110.0, 0.0, False)
 
+    @pytest.mark.parametrize(
+        "n, expected", [(1, -99.9999999), (12, -99.0), (60, -50.0), (12, -0.1)]
+    )
+    def test_rate_recovers_negative_rates_when_the_payment_is_tiny(self, n, expected):
+        pmt = payment(n, expected, -1000.0, 0.0, False)
+        assert rate(n, -1000.0, pmt, 0.0, False) == pytest.approx(expected, rel=1e-9)
+
+    def test_rate_skips_a_nonfinite_probe(self, monkeypatch):
+        real = payment
+
+        def nonfinite_probe(n, i_pct, pv, fv, begin):
+            if i_pct == -99.0:
+                return math.nan
+            return real(n, i_pct, pv, fv, begin)
+
+        monkeypatch.setattr("rpncalc.finance.payment", nonfinite_probe)
+        assert rate(36, 10000.0, -332.14, 0.0, False) == pytest.approx(1.0, abs=0.05)
+
+    def test_rate_reports_a_midpoint_that_cannot_be_evaluated(self, monkeypatch):
+        real = payment
+        probes = {
+            -99.999999, -99.0, -90.0, -50.0, -10.0, -1.0, 0.0,
+            1.0, 10.0, 100.0, 1000.0, 10000.0, 99999.0,
+        }
+
+        def probes_only(n, i_pct, pv, fv, begin):
+            if i_pct not in probes:
+                raise OverflowError
+            return real(n, i_pct, pv, fv, begin)
+
+        monkeypatch.setattr("rpncalc.finance.payment", probes_only)
+        with pytest.raises(FinanceError):
+            rate(36, 10000.0, -332.14, 0.0, False)
+
+    def test_rate_refuses_a_discontinuous_residual_that_never_converges(self, monkeypatch):
+        monkeypatch.setattr(
+            "rpncalc.finance.payment",
+            lambda _n, i_pct, _pv, _fv, _begin: -1.0 if i_pct < 0.5 else 1.0,
+        )
+        monkeypatch.setattr("rpncalc.finance.math.isclose", lambda *_args, **_kwargs: False)
+        with pytest.raises(FinanceError):
+            rate(2, -1.0, 0.0, 1.0, False)
+
     def test_begin_mode_changes_payment(self):
         end = payment(12, 1.0, 1000.0, 0.0, begin=False)
         beg = payment(12, 1.0, 1000.0, 0.0, begin=True)
