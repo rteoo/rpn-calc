@@ -363,11 +363,97 @@ class TestInteractiveStack:
         assert [row["label"] for row in backend.settingsRows] == [
             "Use comma as decimal",
             "Thousands separator",
+            "Decimal digits",
             "Launch on the calculator key",
         ]
         backend.pressCommand("enter")  # toggle decimal comma
         assert backend.decimalComma is True
         backend.pressKeyId("menu")  # closes
+        assert not backend.settingsOpen
+
+    def digits_row(self, backend):
+        rows = backend.settingsRows
+        index = next(i for i, r in enumerate(rows) if r["id"] == "digits")
+        backend._settings_cursor = index
+        return index
+
+    def test_the_digits_row_walks_a_ladder_rather_than_toggling(self, backend):
+        """STD, then FIX 0 to FIX 11, then back to STD.
+
+        STD belongs on the same ladder as the counts: "as many decimals as it
+        takes" answers the same question the other twelve settings answer.
+        """
+        backend.pressKeyId("menu")
+        index = self.digits_row(backend)
+        assert backend.settingsRows[index]["kind"] == "value"
+        assert backend.settingsRows[index]["value"] == "STD"
+        seen = []
+        for _ in range(14):
+            backend.pressCommand("enter")
+            seen.append(backend.settingsRows[index]["value"])
+        assert seen[:3] == ["FIX 0", "FIX 1", "FIX 2"]
+        assert seen[11] == "FIX 11"
+        assert seen[12] == "STD"          # wraps
+        assert seen[13] == "FIX 0"
+
+    def test_the_arrows_step_the_digits_row_either_way(self, backend):
+        backend.pressKeyId("menu")
+        index = self.digits_row(backend)
+        for _ in range(4):
+            backend.pressCommand("right")
+        assert backend.settingsRows[index]["value"] == "FIX 3"
+        backend.pressCommand("left")
+        assert backend.settingsRows[index]["value"] == "FIX 2"
+        for _ in range(3):
+            backend.pressCommand("left")
+        assert backend.settingsRows[index]["value"] == "STD"      # top of the ladder
+        backend.pressCommand("left")
+        assert backend.settingsRows[index]["value"] == "FIX 11"   # wraps past it
+
+    def test_the_arrows_leave_a_toggle_row_alone(self, backend):
+        """They step a ladder; a checkbox still needs ENTER."""
+        backend.pressKeyId("menu")
+        backend._settings_cursor = 0
+        backend.pressCommand("right")
+        backend.pressCommand("left")
+        assert backend.decimalComma is False
+
+    def test_the_setting_reaches_the_display(self, backend):
+        press_commands(backend, "1 enter 3 /")
+        assert backend.stackLines[0] == "0.333333333333333"
+        backend.pressKeyId("menu")
+        self.digits_row(backend)
+        for _ in range(3):
+            backend.pressCommand("enter")      # STD -> FIX 0 -> 1 -> 2
+        assert backend.stackLines[0] == "0.33"
+        assert backend.numberFormatLabel == "FIX 2"
+
+    def test_the_panel_and_the_status_bar_cannot_disagree(self, backend):
+        """The row shows the status bar's own words, so they are one string."""
+        backend.pressKeyId("menu")
+        index = self.digits_row(backend)
+        for _ in range(5):
+            backend.pressCommand("enter")
+            assert backend.settingsRows[index]["value"] == backend.numberFormatLabel
+
+    def test_the_choice_survives_a_restart(self, backend):
+        backend.pressKeyId("menu")
+        self.digits_row(backend)
+        for _ in range(3):
+            backend.pressCommand("enter")
+        assert backend.numberFormatLabel == "FIX 2"
+        assert Backend().numberFormatLabel == "FIX 2"
+
+    def test_on_closes_the_panel_and_stray_keys_are_swallowed(self, backend):
+        """SETTINGS owns the keyboard, like the stack browser and the form."""
+        press_commands(backend, "7 enter 9")
+        before = backend._rpn.stack.to_list()
+        backend.pressKeyId("menu")
+        for key in ("+", "drop", "swap", "sqrt", "5"):
+            backend.pressCommand(key)
+        assert backend._rpn.stack.to_list() == before
+        assert backend.settingsOpen
+        backend.pressCommand("clear_entry")      # ON
         assert not backend.settingsOpen
 
     def test_the_up_key_opens_and_walks(self, backend):
