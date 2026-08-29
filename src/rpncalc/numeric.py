@@ -154,6 +154,7 @@ def _format_sci(value: float, digits: int) -> str:
         return f"{0.0:.{digits}f}E0"
     exponent = _decimal_exponent(value, digits)
     mantissa = _quantise(Decimal(value).scaleb(-exponent), digits)
+    mantissa = _finite_mantissa(mantissa, exponent, digits)
     return f"{mantissa:.{digits}f}E{exponent}"
 
 
@@ -170,7 +171,16 @@ def _format_eng(value: float, digits: int) -> str:
     # by brute force over ~480k value/digit combinations before removing it.
     decimals = max(digits - (exponent - eng_exponent), 0)
     mantissa = _quantise(Decimal(value).scaleb(-eng_exponent), decimals)
+    mantissa = _finite_mantissa(mantissa, eng_exponent, decimals)
     return f"{mantissa:.{decimals}f}E{eng_exponent}"
+
+
+def _finite_mantissa(mantissa: Decimal, exponent: int, decimals: int) -> Decimal:
+    """Back off a rounded mantissa that would parse above the float ceiling."""
+    step = Decimal(1).scaleb(-decimals)
+    while not math.isfinite(float(f"{mantissa:.{decimals}f}E{exponent}")):
+        mantissa += -step if mantissa > 0 else step
+    return mantissa
 
 
 def _quantise(value: Decimal, decimals: int) -> Decimal:
