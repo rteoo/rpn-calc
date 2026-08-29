@@ -74,6 +74,12 @@ class TestTvmClosedForm:
         pmt = payment(n, expected, -1000.0, 0.0, False)
         assert rate(n, -1000.0, pmt, 0.0, False) == pytest.approx(expected, rel=1e-9)
 
+    def test_rate_keeps_scale_for_tiny_cash_flows(self):
+        pv = -1e-13
+        expected = -0.1
+        pmt = payment(12, expected, pv, 0.0, False)
+        assert rate(12, pv, pmt, 0.0, False) == pytest.approx(expected, rel=1e-9)
+
     def test_rate_skips_a_nonfinite_probe(self, monkeypatch):
         real = payment
 
