@@ -478,6 +478,19 @@ class TestStatisticsAgainstTheStandardLibrary:
         engine.press("stddev")
         assert engine.stack.peek(1) == statistics.stdev(values)
 
+    @pytest.mark.parametrize("value", [1e308, 1.5e308])
+    def test_huge_repeated_values_keep_mean_and_stddev_finite(self, value):
+        """Scaling avoids overflowing the sum of an otherwise finite mean."""
+        mean = self.accumulate([value, value])
+        mean.press("mean")
+        assert mean.error is None
+        assert mean.stack.peek(1) == value
+
+        stddev = self.accumulate([value, value])
+        stddev.press("stddev")
+        assert stddev.error is None
+        assert stddev.stack.peek(1) == 0.0
+
     @given(st.lists(REAL, min_size=2, max_size=20))
     @settings(max_examples=100)
     def test_a_shifted_sample_moves_its_centre_but_not_its_spread(self, values):

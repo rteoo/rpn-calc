@@ -44,7 +44,13 @@ _ARROWS = frozenset({"up", "down", "left", "right"})
 
 
 def _mean(values: list[float]) -> float:
-    return math.fsum(values) / len(values)
+    # Sum after scaling so a representable mean does not overflow in the
+    # intermediate accumulator.  Dividing before restoring the scale also
+    # keeps the normalized sum bounded by the sample count.
+    scale = max(abs(value) for value in values)
+    if scale == 0.0:
+        return 0.0
+    return scale * (math.fsum(value / scale for value in values) / len(values))
 
 
 def _median(values: list[float]) -> float:
