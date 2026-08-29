@@ -35,7 +35,7 @@ Item {
         property string rowObjectName: ""
 
         Layout.fillWidth: true
-        Layout.preferredHeight: Math.round(root.fontPixelSize * 1.7)
+        Layout.preferredHeight: Math.round(root.fontPixelSize * 1.45)
         opacity: (row && row.enabled) ? 1.0 : 0.38
 
         readonly property bool selected: rowIndex === root.cursor
@@ -48,6 +48,8 @@ Item {
             radius: 2
         }
 
+        readonly property bool isValueRow: row && row.kind === "value"
+
         Rectangle {
             id: box
             anchors.left: parent.left
@@ -56,6 +58,9 @@ Item {
             width: Math.round(root.fontPixelSize * 0.9)
             height: width
             radius: 2
+            // A setting that walks a ladder has no box to tick; the row keeps
+            // the same left inset so every label still starts on one line.
+            visible: !parent.isValueRow
             color: "transparent"
             border.color: root.inkColor
             border.width: Math.max(1, Math.round(root.fontPixelSize * 0.08))
@@ -71,11 +76,23 @@ Item {
         }
 
         Text {
+            id: rowValue
+            anchors.right: parent.right
+            anchors.rightMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            visible: parent.isValueRow
+            text: row ? row.value : ""
+            color: root.inkColor
+            font.family: "iA Writer Mono S"
+            font.pixelSize: root.fontPixelSize
+        }
+
+        Text {
             objectName: rowObjectName
             anchors.left: box.right
             anchors.leftMargin: Math.round(root.fontPixelSize * 0.45)
-            anchors.right: parent.right
-            anchors.rightMargin: 4
+            anchors.right: rowValue.visible ? rowValue.left : parent.right
+            anchors.rightMargin: Math.round(root.fontPixelSize * 0.45)
             anchors.verticalCenter: parent.verticalCenter
             text: row ? row.label : ""
             color: root.inkColor
@@ -118,6 +135,11 @@ Item {
         SettingsRow {
             row: root.rowAt(2)
             rowIndex: 2
+            rowObjectName: "digitsItem"
+        }
+        SettingsRow {
+            row: root.rowAt(3)
+            rowIndex: 3
             rowObjectName: "calculatorKeyItem"
         }
 
@@ -125,7 +147,7 @@ Item {
 
         Text {
             Layout.fillWidth: true
-            text: "ENTER toggles · MENU closes"
+            text: "ENTER toggles · arrows adjust · MENU closes"
             color: root.mutedColor
             font.family: "iA Writer Mono S"
             font.pixelSize: Math.round(root.fontPixelSize * 0.75)

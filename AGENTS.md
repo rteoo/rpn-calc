@@ -142,7 +142,23 @@ Other deliberate deviations:
   level 1, the same way the `y^x` cap beside it does. A real 50g's XROOT takes
   them the other way round and legends it `ⁿ√y`, which spells the stack
   backwards; matching the label was worth the deviation. `3 ENTER 27` is 3;
-- `MENU` opens the on-screen SETTINGS panel; `▲` opens the interactive stack browser;
+- `MENU` opens the on-screen SETTINGS panel; `▲` opens the interactive stack browser.
+  The panel owns the keyboard while it shows. Most rows are checkboxes ENTER
+  toggles, but **Decimal digits walks a ladder** — STD, then FIX 0 through
+  FIX 11, wrapping — with ENTER stepping forward and `◀`/`▶` either way. STD
+  belongs on that ladder rather than beside it: "as many decimals as it takes"
+  answers the same question the twelve counts answer. SCI and ENG are not on
+  it, because nothing on the face reaches them, so stepping out of one lands
+  in FIX. The row shows `numberFormatLabel`, the status bar's own string, so
+  the panel and the bar cannot disagree about what the display is doing.
+  **The panel has `clip: true` and no slack** — a fourth row pushed the hint
+  14px off the bottom, sliced rather than reported, the same failure the
+  FINANCE form had. Its rows are written out one by one rather than repeated,
+  so a backend row with no QML row is simply invisible;
+  `tests/test_startup.py::TestSettingsPanelLayout` counts them, measures the
+  overflow, and checks every string against the font — `◀`/`▶` are *not* in
+  it, which is why the face draws its arrows, and spelling them into the hint
+  brought the empty boxes straight back;
 - `ON` cancels the command line; shift-`←` is CLEAR (empty the stack);
 - ENTER spans two columns; there is no SPC key on the face (keyboard Space still works);
 - trig is off the face and has no keyboard binding either; the engine keeps it
