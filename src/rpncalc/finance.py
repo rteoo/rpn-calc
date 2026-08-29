@@ -198,7 +198,7 @@ def rate(n: float, pv: float, pmt: float, fv: float, begin: bool) -> float:
         payment(n, 1.0, pv, fv, begin),
         payment(n, 100.0, pv, fv, begin),
         rel_tol=1e-9,
-        abs_tol=1e-12,
+        abs_tol=0.0,
     ):
         raise FinanceError("Compound Interest Error")
     def residual(i_pct: float) -> float:
