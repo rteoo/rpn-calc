@@ -491,6 +491,12 @@ class TestStatisticsAgainstTheStandardLibrary:
         assert stddev.error is None
         assert stddev.stack.peek(1) == 0.0
 
+    def test_ordinary_mean_keeps_fsum_rounding(self):
+        values = [0.1, 0.2, 0.3]
+        engine = self.accumulate(values)
+        engine.press("mean")
+        assert engine.stack.peek(1) == math.fsum(values) / len(values)
+
     @given(st.lists(REAL, min_size=2, max_size=20))
     @settings(max_examples=100)
     def test_a_shifted_sample_moves_its_centre_but_not_its_spread(self, values):
