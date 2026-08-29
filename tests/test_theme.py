@@ -113,6 +113,27 @@ class TestThemeFile:
             _LIGHT_THEME["background"],
         )
 
+    def test_invalid_utf8_falls_back_to_the_built_in_palette(self, omarchy):
+        (omarchy.dir / "colors.toml").write_bytes(b"background = '\xff'\n")
+        backend = Backend()
+        expected = _DARK_THEME if backend.darkMode else _LIGHT_THEME
+        assert backend.themeBackground == expected["background"]
+
+    def test_a_read_error_falls_back_to_the_built_in_palette(
+        self, omarchy, monkeypatch
+    ):
+        original_read_text = omarchy.dir.joinpath("colors.toml").read_text
+
+        def fail_for_theme(path, *args, **kwargs):
+            if path == omarchy.dir / "colors.toml":
+                raise OSError("theme disappeared while reading")
+            return original_read_text(*args, **kwargs)
+
+        monkeypatch.setattr("rpncalc.backend.Path.read_text", fail_for_theme)
+        backend = Backend()
+        expected = _DARK_THEME if backend.darkMode else _LIGHT_THEME
+        assert backend.themeBackground == expected["background"]
+
 
 class TestNoThemeFile:
     def test_the_built_in_palette_is_used(self, monkeypatch, tmp_path, clean_settings):
@@ -190,6 +211,29 @@ class TestSystemTheme:
         from rpncalc.systemtheme import _read_registry_dword
 
         assert _read_registry_dword(r"Software\rpncalc-does-not-exist", "Nope") is None
+
+    def test_the_registry_reader_survives_a_non_numeric_value(
+        self, qt_app, monkeypatch
+    ):
+        import rpncalc.systemtheme as module
+
+        class FakeWinreg:
+            HKEY_CURRENT_USER = object()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def OpenKey(self, *_args):
+                return self
+
+            def QueryValueEx(self, *_args):
+                return "not-a-number", 1
+
+        monkeypatch.setattr(module, "winreg", FakeWinreg())
+        assert module._read_registry_dword("key", "value") is None
 
     def test_falls_back_when_qt_reports_an_unknown_scheme(self, qt_app, monkeypatch):
         from PySide6.QtCore import Qt

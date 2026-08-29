@@ -66,13 +66,13 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+C"
         context: Qt.ApplicationShortcut
-        onActivated: backend.copyResult()
+        onActivated: backend.pressCommand("copy")
     }
 
     Shortcut {
         sequence: "Ctrl+V"
         context: Qt.ApplicationShortcut
-        onActivated: backend.pasteNumber()
+        onActivated: backend.pressCommand("paste")
     }
 
     Shortcut {
@@ -84,7 +84,7 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+M"
         context: Qt.ApplicationShortcut
-        onActivated: backend.toggleEntryMode()
+        onActivated: backend.pressCommand("toggle_mode")
     }
 
     Shortcut {
