@@ -35,7 +35,7 @@ Item {
         property int fieldIndex: -1
         property bool selected: fieldIndex === root.cursor
 
-        implicitHeight: Math.round(root.fontPixelSize * 1.35)
+        implicitHeight: Math.round(root.fontPixelSize * 1.2)
 
         Rectangle {
             anchors.fill: parent
@@ -46,6 +46,7 @@ Item {
         }
 
         Text {
+            id: cellLabel
             anchors.left: parent.left
             anchors.leftMargin: 4
             anchors.verticalCenter: parent.verticalCenter
@@ -55,12 +56,23 @@ Item {
             font.pixelSize: root.fontPixelSize
         }
 
+        // Bounded by the label rather than free to run under it. A solved
+        // value carries full precision - FV on a 12-period 12% problem is
+        // 1126.82503013197 - which is wider than half the display, and used
+        // to draw straight through "FV:" as "FM26.82503013197". It shrinks
+        // to fit and only elides once there is nothing left to give.
         Text {
+            anchors.left: cellLabel.right
+            anchors.leftMargin: 6
             anchors.right: parent.right
             anchors.rightMargin: 4
             anchors.verticalCenter: parent.verticalCenter
+            horizontalAlignment: Text.AlignRight
             text: parent.field ? parent.field.value : ""
             color: root.inkColor
+            elide: Text.ElideRight
+            fontSizeMode: Text.HorizontalFit
+            minimumPixelSize: Math.round(root.fontPixelSize * 0.55)
             font.family: "iA Writer Mono S"
             font.pixelSize: root.fontPixelSize
         }
@@ -141,27 +153,25 @@ Item {
 
         Item { Layout.fillHeight: true }
 
-        // The entry line the form types into. It is the ordinary command
-        // line: the form has to draw it, because it hides the stack view
-        // that would otherwise be showing what is being typed.
+        // One line, not two. The entry line the form types into - it is the
+        // ordinary command line, and the form has to draw it because it hides
+        // the stack view that would otherwise show it - and the hint are
+        // alternatives, and stacking them needed 178px of a 151px form, so
+        // `clip: true` sliced the entry in half exactly when it mattered.
         Text {
             Layout.fillWidth: true
-            horizontalAlignment: Text.AlignRight
+            Layout.preferredHeight: Math.round(root.fontPixelSize * 1.2)
+            verticalAlignment: Text.AlignVCenter
+            horizontalAlignment: root.entry !== "" ? Text.AlignRight
+                                                   : Text.AlignLeft
             rightPadding: 4
-            visible: root.entry !== ""
-            text: root.entry + "_"
-            color: root.inkColor
+            text: root.entry !== "" ? root.entry + "_" : "Type a value, or SOLVE"
+            color: root.entry !== "" ? root.inkColor : root.mutedColor
+            elide: Text.ElideLeft
             font.family: "iA Writer Mono S"
-            font.pixelSize: root.fontPixelSize
-        }
-
-        Text {
-            Layout.fillWidth: true
-            text: root.entry !== "" ? "ENTER stores into the field"
-                                    : "Type a value, or SOLVE"
-            color: root.mutedColor
-            font.family: "iA Writer Mono S"
-            font.pixelSize: Math.round(root.fontPixelSize * 0.75)
+            font.pixelSize: root.entry !== ""
+                            ? root.fontPixelSize
+                            : Math.round(root.fontPixelSize * 0.75)
         }
     }
 }

@@ -520,6 +520,22 @@ class RpnEngine:
         elif direction == "down":
             self.finance_cursor = (self.finance_cursor + 1) % n
 
+    def clear_finance(self) -> None:
+        """CLEAR on the FINANCE screen: empty the registers.
+
+        P/YR and Begin/End survive. They are how the form is configured rather
+        than data entered into it - the same line a 50g draws between its TVM
+        variables and the payment mode - and clearing the numbers is no reason
+        to forget that the problem is monthly and paid at the end.
+        """
+        self.command_line = None
+        self.finance.n = 0.0
+        self.finance.i = 0.0
+        self.finance.pv = 0.0
+        self.finance.pmt = 0.0
+        self.finance.fv = 0.0
+        self.finance.clear_cash_flows()
+
     def commit_finance_entry(self) -> None:
         """ENTER on the FINANCE screen: what was typed goes into the field.
 
