@@ -514,6 +514,7 @@ class RpnEngine:
 
     def finance_move(self, direction: str) -> None:
         """Move the FINANCE screen cursor; wraps at both ends."""
+        self.error = None
         n = len(self._FINANCE_FIELDS)
         if direction == "up":
             self.finance_cursor = (self.finance_cursor - 1) % n
@@ -528,6 +529,7 @@ class RpnEngine:
         variables and the payment mode - and clearing the numbers is no reason
         to forget that the problem is monthly and paid at the end.
         """
+        self.error = None
         self.command_line = None
         self.finance.n = 0.0
         self.finance.i = 0.0
