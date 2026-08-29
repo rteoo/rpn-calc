@@ -312,6 +312,41 @@ class TestFaceKeys:
         assert e.stack.to_list() == []
         assert e.finance.cash_flows == before_flows
 
+    def test_nj_rejects_fractional_repetition_without_mutating_cash_flow(self):
+        e = RpnEngine()
+        e.finance.cash_flows = [CashFlow(-1000), CashFlow(100, 5)]
+        e.stack.push(2.9)
+
+        e.press("fin_nj")
+
+        assert e.error == "Nj must be between 1 and 99"
+        assert e.finance.cash_flows == [CashFlow(-1000), CashFlow(100, 5)]
+
+    @pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf, 100.0])
+    def test_nj_rejects_nonfinite_or_out_of_range_values_without_mutating(self, value):
+        e = RpnEngine()
+        e.finance.cash_flows = [CashFlow(-1000), CashFlow(100, 5)]
+        e.stack.push(value)
+        before_stack = e.stack.to_list()
+        before_flows = list(e.finance.cash_flows)
+
+        e.press("fin_nj")
+
+        assert e.error == "Nj must be between 1 and 99"
+        assert e.stack.to_list() == before_stack
+        assert e.finance.cash_flows == before_flows
+
+    @pytest.mark.parametrize("times", [1.0, 99.0])
+    def test_nj_accepts_integer_endpoints(self, times):
+        e = RpnEngine()
+        e.finance.cash_flows = [CashFlow(-1000), CashFlow(100)]
+        e.stack.push(times)
+
+        e.press("fin_nj")
+
+        assert e.error is None
+        assert e.finance.cash_flows[-1].times == int(times)
+
     def test_finance_store_without_stack_errors(self):
         e = RpnEngine()
         e._finance_store_pending = True

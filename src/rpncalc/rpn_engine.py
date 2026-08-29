@@ -516,6 +516,7 @@ class RpnEngine:
 
     def finance_move(self, direction: str) -> None:
         """Move the FINANCE screen cursor; wraps at both ends."""
+        self.error = None
         n = len(self._FINANCE_FIELDS)
         if direction == "up":
             self.finance_cursor = (self.finance_cursor - 1) % n
@@ -530,6 +531,7 @@ class RpnEngine:
         variables and the payment mode - and clearing the numbers is no reason
         to forget that the problem is monthly and paid at the end.
         """
+        self.error = None
         self.command_line = None
         self.finance.n = 0.0
         self.finance.i = 0.0
@@ -648,8 +650,10 @@ class RpnEngine:
         if key == "fin_nj":
             if self.stack.depth < 1:
                 raise StackError("Too Few Arguments")
-            times = int(self.stack.peek(1))
-            self.finance.set_nj(times)
+            times = self.stack.peek(1)
+            if not times.is_integer():
+                raise FinanceError("Nj must be between 1 and 99")
+            self.finance.set_nj(int(times))
             return
         if key == "fin_npv":
             self.stack.push(self.finance.npv())

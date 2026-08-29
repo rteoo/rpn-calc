@@ -59,7 +59,9 @@ class TestDisplayFormats:
             # divide by zero here and take the display down with it.
             (ENG, 3, 5e-324, "4.941E-324"),
             (SCI, 3, 5e-324, "4.941E-324"),
-            (ENG, 3, 1.7976931348623157e308, "179.8E306"),
+            # The mathematically rounded value is above the float ceiling;
+            # formatting backs off one display digit to remain parseable.
+            (ENG, 3, 1.7976931348623157e308, "179.7E306"),
         ],
     )
     def test_formats(self, mode, digits, value, expected):
