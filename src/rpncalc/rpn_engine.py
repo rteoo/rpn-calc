@@ -50,8 +50,6 @@ def _mean(values: list[float]) -> float:
         # Only scale after fsum overflows, preserving its ordinary rounding
         # for the usual path while keeping a representable mean finite.
         scale = max(abs(value) for value in values)
-        if scale == 0.0:
-            return 0.0
         return scale * (math.fsum(value / scale for value in values) / len(values))
 
 
