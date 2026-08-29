@@ -180,12 +180,10 @@ def rate(n: float, pv: float, pmt: float, fv: float, begin: bool) -> float:
     """Bisection on i (percent), matching finanx-12c / 12C behaviour."""
     if n == 0:
         raise FinanceError("Compound Interest Error")
-    if (pv > 0 and fv > 0) or (pv < 0 and fv < 0):
+    if not any(value > 0 for value in (pv, pmt, fv)) or not any(
+        value < 0 for value in (pv, pmt, fv)
+    ):
         raise FinanceError("Compound Interest Error")
-    # Normalize signs the way finanx does before searching.
-    pv_n = -abs(pv)
-    pmt_n = abs(pmt)
-    fv_n = abs(fv)
     # The payment has to actually respond to the rate, or there is no rate to
     # find and bisection would "converge" on whichever bound it started from.
     # A single Begin-mode period with no balloon is the case that bites: the
@@ -196,26 +194,44 @@ def rate(n: float, pv: float, pmt: float, fv: float, begin: bool) -> float:
     # about 1e-15 relative, while two rates a hundredfold apart move a solvable
     # payment by a fraction of itself. There is no middle ground to get wrong.
     if math.isclose(
-        payment(n, 1.0, pv_n, fv_n, begin),
-        payment(n, 100.0, pv_n, fv_n, begin),
+        payment(n, 1.0, pv, fv, begin),
+        payment(n, 100.0, pv, fv, begin),
         rel_tol=1e-9,
         abs_tol=1e-12,
     ):
         raise FinanceError("Compound Interest Error")
+    # Keep the historical positive-rate bracket (and its first midpoint), but
+    # probe the rest of the valid domain so rates below -1% can be recovered.
     low, high = -1.0, 99999.0
+    negative_low = -99.999999
+    try:
+        negative_value = payment(n, negative_low, pv, fv, begin) - pmt
+    except (FinanceError, ZeroDivisionError, ValueError, OverflowError):
+        negative_value = None
+    negative_high_value = payment(n, low, pv, fv, begin) - pmt
+    if negative_value is not None and negative_value * negative_high_value <= 0:
+        low, high = negative_low, -1.0
+
+    # Payment is monotonic over either bracket, but its direction depends on
+    # the signs of PV and FV. Determine it away from the huge upper bound so a
+    # high-rate overflow still leaves the bisection usable.
+    slope = payment(n, 1.0, pv, fv, begin) - payment(n, -1.0, pv, fv, begin)
+    descending = slope < 0
+
     for _ in range(10000):
         mid = (low + high) / 2.0
         try:
-            guessed = payment(n, mid, pv_n, fv_n, begin)
+            guessed = payment(n, mid, pv, fv, begin)
         except (FinanceError, ZeroDivisionError, ValueError, OverflowError):
             high = mid
             continue
-        if abs(pmt_n - guessed) <= 1e-9:
+        difference = guessed - pmt
+        if abs(difference) <= 1e-9:
             return mid
-        if guessed > pmt_n:
-            high = mid
-        else:
+        if (difference > 0) == descending:
             low = mid
+        else:
+            high = mid
     raise FinanceError("Compound Interest Error")
 
 

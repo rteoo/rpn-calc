@@ -55,6 +55,18 @@ class TestTvmClosedForm:
         i = rate(36, 10000.0, -332.14, 0.0, begin=False)
         assert i == pytest.approx(1.0, abs=0.01)
 
+    def test_rate_recovers_a_high_rate_with_same_signed_pv_and_fv(self):
+        pmt = payment(1, 800.0, 1000.0, 1000.0, False)
+        assert pmt == pytest.approx(-10000.0)
+        assert rate(1, 1000.0, pmt, 1000.0, False) == pytest.approx(800.0)
+
+    def test_rate_recovers_a_negative_rate(self):
+        assert rate(1, -100.0, 0.0, 50.0, False) == pytest.approx(-50.0)
+
+    def test_rate_rejects_same_signed_cash_flows(self):
+        with pytest.raises(FinanceError, match="Compound Interest Error"):
+            rate(1, -100.0, -110.0, 0.0, False)
+
     def test_begin_mode_changes_payment(self):
         end = payment(12, 1.0, 1000.0, 0.0, begin=False)
         beg = payment(12, 1.0, 1000.0, 0.0, begin=True)
