@@ -16,6 +16,12 @@ class FinanceError(ValueError):
     """An unsolvable or out-of-domain finance problem."""
 
 
+def _finite(value: float) -> float:
+    if not math.isfinite(value):
+        raise FinanceError("Infinite Result")
+    return value
+
+
 @dataclass
 class CashFlow:
     amount: float
@@ -75,30 +81,31 @@ class FinanceMemory:
     # -- TVM solve ----------------------------------------------------------
 
     def solve_n(self) -> float:
-        self.n = period(self.i, self.pv, self.pmt, self.fv, self.begin)
+        self.n = _finite(period(self.i, self.pv, self.pmt, self.fv, self.begin))
         return self.n
 
     def solve_i(self) -> float:
-        self.i = rate(self.n, self.pv, self.pmt, self.fv, self.begin)
+        self.i = _finite(rate(self.n, self.pv, self.pmt, self.fv, self.begin))
         return self.i
 
     def solve_pv(self) -> float:
-        self.pv = present_value(self.n, self.i, self.pmt, self.fv, self.begin)
+        value = _finite(present_value(self.n, self.i, self.pmt, self.fv, self.begin))
+        self.pv = value
         return self.pv
 
     def solve_pmt(self) -> float:
-        self.pmt = payment(self.n, self.i, self.pv, self.fv, self.begin)
+        self.pmt = _finite(payment(self.n, self.i, self.pv, self.fv, self.begin))
         return self.pmt
 
     def solve_fv(self) -> float:
-        self.fv = future_value(self.n, self.i, self.pv, self.pmt, self.begin)
+        self.fv = _finite(future_value(self.n, self.i, self.pv, self.pmt, self.begin))
         return self.fv
 
     def npv(self) -> float:
-        return npv(self.i, self.cash_flows)
+        return _finite(npv(self.i, self.cash_flows))
 
     def irr(self) -> float:
-        value = irr(self.cash_flows)
+        value = _finite(irr(self.cash_flows))
         self.i = value
         return value
 
