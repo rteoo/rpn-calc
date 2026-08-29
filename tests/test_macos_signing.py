@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import plistlib
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -205,3 +206,56 @@ class TestEntryPoint:
         )
         assert notarize.main([str(app)]) == 1
         assert "missing credentials" in capsys.readouterr().err
+
+    def test_a_failure_rebuilding_the_stapled_archive_is_reported(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        app = tmp_path / "rpn-calc.app"
+        app.mkdir()
+        for name in notarize.CREDENTIAL_VARS:
+            monkeypatch.setenv(name, "configured")
+
+        monkeypatch.setattr(notarize, "check_signature", lambda _app: "Developer ID")
+        monkeypatch.setattr(notarize, "submit", lambda _archive, _creds: "abc-123")
+        monkeypatch.setattr(notarize, "staple", lambda _app: None)
+        calls = 0
+
+        def zip_twice(_app, _archive):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise subprocess.CalledProcessError(1, "ditto")
+            _archive.write_bytes(b"zip")
+            return _archive
+
+        monkeypatch.setattr(notarize, "zip_app", zip_twice)
+
+        assert notarize.main([str(app)]) == 1
+        captured = capsys.readouterr()
+        assert "NOTARIZE_FAIL" in captured.err
+        assert "Traceback" not in captured.err
+        assert calls == 2
+
+    def test_success_rebuilds_the_archive_after_stapling(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        app = tmp_path / "rpn-calc.app"
+        app.mkdir()
+        for name in notarize.CREDENTIAL_VARS:
+            monkeypatch.setenv(name, "configured")
+
+        monkeypatch.setattr(notarize, "check_signature", lambda _app: "Developer ID")
+        monkeypatch.setattr(notarize, "submit", lambda _archive, _creds: "abc-123")
+        events = []
+        monkeypatch.setattr(notarize, "staple", lambda _app: events.append("staple"))
+
+        def zip_record(_app, archive):
+            events.append("zip")
+            archive.write_bytes(b"zip")
+            return archive
+
+        monkeypatch.setattr(notarize, "zip_app", zip_record)
+
+        assert notarize.main([str(app)]) == 0
+        assert events == ["zip", "staple", "zip"]
+        assert "NOTARIZE_OK" in capsys.readouterr().out
