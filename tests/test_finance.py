@@ -80,6 +80,43 @@ class TestTvmClosedForm:
         pmt = payment(12, expected, pv, 0.0, False)
         assert rate(12, pv, pmt, 0.0, False) == pytest.approx(expected, rel=1e-9)
 
+    def test_rate_finds_multiple_roots_inside_one_coarse_probe_interval(self):
+        n = 24
+        expected = -44.39991021857251
+        pv = 112844.30237231079
+        fv = 105.3662448532874
+        begin = True
+        pmt = payment(n, expected, pv, fv, begin)
+
+        solved = rate(n, pv, pmt, fv, begin)
+
+        assert payment(n, solved, pv, fv, begin) == pytest.approx(pmt, rel=1e-9)
+
+    def test_rate_skips_an_unstable_boundary_crossing(self):
+        n = 14
+        expected = 488.9588355495498
+        pv = 423978.960565134
+        fv = 2.2596392940377454e-06
+        begin = True
+        pmt = payment(n, expected, pv, fv, begin)
+
+        solved = rate(n, pv, pmt, fv, begin)
+
+        assert solved == pytest.approx(expected, rel=1e-9)
+        assert payment(n, solved, pv, fv, begin) == pytest.approx(pmt, rel=1e-9)
+
+    def test_rate_contains_a_flatness_probe_overflow(self, monkeypatch):
+        real = payment
+
+        def overflow_at_one(n, i_pct, pv, fv, begin):
+            if i_pct == 1.0:
+                raise OverflowError
+            return real(n, i_pct, pv, fv, begin)
+
+        monkeypatch.setattr("rpncalc.finance.payment", overflow_at_one)
+        with pytest.raises(FinanceError, match="Compound Interest Error"):
+            rate(36, 10000.0, -332.14, 0.0, False)
+
     def test_rate_skips_a_nonfinite_probe(self, monkeypatch):
         real = payment
 
@@ -91,19 +128,25 @@ class TestTvmClosedForm:
         monkeypatch.setattr("rpncalc.finance.payment", nonfinite_probe)
         assert rate(36, 10000.0, -332.14, 0.0, False) == pytest.approx(1.0, abs=0.05)
 
-    def test_rate_reports_a_midpoint_that_cannot_be_evaluated(self, monkeypatch):
+    @pytest.mark.parametrize("failure", ["overflow", "nonfinite"])
+    def test_rate_rejects_a_midpoint_that_cannot_be_evaluated(
+        self, monkeypatch, failure
+    ):
         real = payment
-        probes = {
-            -99.999999, -99.0, -90.0, -50.0, -10.0, -1.0, 0.0,
-            1.0, 10.0, 100.0, 1000.0, 10000.0, 99999.0,
-        }
+        scanning = True
 
-        def probes_only(n, i_pct, pv, fv, begin):
-            if i_pct not in probes:
-                raise OverflowError
-            return real(n, i_pct, pv, fv, begin)
+        def fail_after_probes(n, i_pct, pv, fv, begin):
+            nonlocal scanning
+            if not scanning:
+                if failure == "overflow":
+                    raise OverflowError
+                return math.nan
+            result = real(n, i_pct, pv, fv, begin)
+            if i_pct == 99999.0:
+                scanning = False
+            return result
 
-        monkeypatch.setattr("rpncalc.finance.payment", probes_only)
+        monkeypatch.setattr("rpncalc.finance.payment", fail_after_probes)
         with pytest.raises(FinanceError):
             rate(36, 10000.0, -332.14, 0.0, False)
 
