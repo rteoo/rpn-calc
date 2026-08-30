@@ -197,6 +197,32 @@ class TestFaceKeys:
         assert e.error is None
         assert e.finance.pv == pytest.approx(12462.21, abs=0.05)
 
+    def test_finance_screen_solve_contains_arithmetic_overflow(self):
+        e = RpnEngine()
+        e.finance.n = 2000
+        e.finance.i = -50
+        e.finance.pv = e.finance.pmt = e.finance.fv = 1
+        e.finance_cursor = 4  # fv
+
+        e.finance_menu(2)
+
+        assert e.error == "Infinite Result"
+        assert e.finance.fv == 1
+        assert e.stack.to_list() == []
+
+    def test_finance_screen_rejects_nonfinite_result_atomically(self):
+        e = RpnEngine()
+        e.finance.n = 2
+        e.finance.i = 1
+        e.finance.pv = e.finance.pmt = e.finance.fv = 1e308
+        e.finance_cursor = 2  # pv
+
+        e.finance_menu(2)
+
+        assert e.error == "Infinite Result"
+        assert e.finance.pv == 1e308
+        assert e.stack.to_list() == []
+
     def test_finance_screen_edit_and_begin_toggle(self):
         e = RpnEngine()
         e.stack.push(48.0)
@@ -286,6 +312,27 @@ class TestFaceKeys:
         for k in ("3", "fin_nj"):
             e.press(k)
         assert e.finance.cash_flows[-1].times == 3
+
+    def test_npv_key_contains_zero_division(self):
+        e = RpnEngine()
+        e.finance.i = -99.999999
+        e.finance.cash_flows = [CashFlow(-1), CashFlow(1, 99)]
+        before_flows = list(e.finance.cash_flows)
+
+        e.press("fin_npv")
+
+        assert e.error == "Infinite Result"
+        assert e.stack.to_list() == []
+        assert e.finance.cash_flows == before_flows
+
+    def test_npv_key_rejects_nonfinite_result(self):
+        e = RpnEngine()
+        e.finance.cash_flows = [CashFlow(1e308), CashFlow(1e308)]
+
+        e.press("fin_npv")
+
+        assert e.error == "Infinite Result"
+        assert e.stack.to_list() == []
 
     def test_nj_rejects_fractional_repetition_without_mutating_cash_flow(self):
         e = RpnEngine()
