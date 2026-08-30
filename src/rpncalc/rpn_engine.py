@@ -225,6 +225,8 @@ class RpnEngine:
             self._dispatch(key)
         except (StackError, CalcError, FinanceError) as exc:
             self.error = str(exc)
+        except (OverflowError, ZeroDivisionError):
+            self.error = "Infinite Result"
 
     def _dispatch(self, key: str) -> None:
         if not self.knows(key):
@@ -586,6 +588,8 @@ class RpnEngine:
             # index 1 AMOR is intentionally inert (dimmed in the UI)
         except (StackError, CalcError, FinanceError) as exc:
             self.error = str(exc)
+        except (OverflowError, ZeroDivisionError):
+            self.error = "Infinite Result"
 
     def _store_finance_field(self, field: str, value: float) -> None:
         if field == "n":
