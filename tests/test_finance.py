@@ -55,6 +55,110 @@ class TestTvmClosedForm:
         i = rate(36, 10000.0, -332.14, 0.0, begin=False)
         assert i == pytest.approx(1.0, abs=0.01)
 
+    def test_rate_recovers_a_high_rate_with_same_signed_pv_and_fv(self):
+        pmt = payment(1, 800.0, 1000.0, 1000.0, False)
+        assert pmt == pytest.approx(-10000.0)
+        assert rate(1, 1000.0, pmt, 1000.0, False) == pytest.approx(800.0)
+
+    def test_rate_recovers_a_negative_rate(self):
+        assert rate(1, -100.0, 0.0, 50.0, False) == pytest.approx(-50.0)
+
+    def test_rate_rejects_same_signed_cash_flows(self):
+        with pytest.raises(FinanceError, match="Compound Interest Error"):
+            rate(1, -100.0, -110.0, 0.0, False)
+
+    @pytest.mark.parametrize(
+        "n, expected", [(1, -99.9999999), (12, -99.0), (60, -50.0), (12, -0.1)]
+    )
+    def test_rate_recovers_negative_rates_when_the_payment_is_tiny(self, n, expected):
+        pmt = payment(n, expected, -1000.0, 0.0, False)
+        assert rate(n, -1000.0, pmt, 0.0, False) == pytest.approx(expected, rel=1e-9)
+
+    def test_rate_keeps_scale_for_tiny_cash_flows(self):
+        pv = -1e-13
+        expected = -0.1
+        pmt = payment(12, expected, pv, 0.0, False)
+        assert rate(12, pv, pmt, 0.0, False) == pytest.approx(expected, rel=1e-9)
+
+    def test_rate_finds_multiple_roots_inside_one_coarse_probe_interval(self):
+        n = 24
+        expected = -44.39991021857251
+        pv = 112844.30237231079
+        fv = 105.3662448532874
+        begin = True
+        pmt = payment(n, expected, pv, fv, begin)
+
+        solved = rate(n, pv, pmt, fv, begin)
+
+        assert payment(n, solved, pv, fv, begin) == pytest.approx(pmt, rel=1e-9)
+
+    def test_rate_skips_an_unstable_boundary_crossing(self):
+        n = 14
+        expected = 488.9588355495498
+        pv = 423978.960565134
+        fv = 2.2596392940377454e-06
+        begin = True
+        pmt = payment(n, expected, pv, fv, begin)
+
+        solved = rate(n, pv, pmt, fv, begin)
+
+        assert solved == pytest.approx(expected, rel=1e-9)
+        assert payment(n, solved, pv, fv, begin) == pytest.approx(pmt, rel=1e-9)
+
+    def test_rate_contains_a_flatness_probe_overflow(self, monkeypatch):
+        real = payment
+
+        def overflow_at_one(n, i_pct, pv, fv, begin):
+            if i_pct == 1.0:
+                raise OverflowError
+            return real(n, i_pct, pv, fv, begin)
+
+        monkeypatch.setattr("rpncalc.finance.payment", overflow_at_one)
+        with pytest.raises(FinanceError, match="Compound Interest Error"):
+            rate(36, 10000.0, -332.14, 0.0, False)
+
+    def test_rate_skips_a_nonfinite_probe(self, monkeypatch):
+        real = payment
+
+        def nonfinite_probe(n, i_pct, pv, fv, begin):
+            if i_pct == -99.0:
+                return math.nan
+            return real(n, i_pct, pv, fv, begin)
+
+        monkeypatch.setattr("rpncalc.finance.payment", nonfinite_probe)
+        assert rate(36, 10000.0, -332.14, 0.0, False) == pytest.approx(1.0, abs=0.05)
+
+    @pytest.mark.parametrize("failure", ["overflow", "nonfinite"])
+    def test_rate_rejects_a_midpoint_that_cannot_be_evaluated(
+        self, monkeypatch, failure
+    ):
+        real = payment
+        scanning = True
+
+        def fail_after_probes(n, i_pct, pv, fv, begin):
+            nonlocal scanning
+            if not scanning:
+                if failure == "overflow":
+                    raise OverflowError
+                return math.nan
+            result = real(n, i_pct, pv, fv, begin)
+            if i_pct == 99999.0:
+                scanning = False
+            return result
+
+        monkeypatch.setattr("rpncalc.finance.payment", fail_after_probes)
+        with pytest.raises(FinanceError):
+            rate(36, 10000.0, -332.14, 0.0, False)
+
+    def test_rate_refuses_a_discontinuous_residual_that_never_converges(self, monkeypatch):
+        monkeypatch.setattr(
+            "rpncalc.finance.payment",
+            lambda _n, i_pct, _pv, _fv, _begin: -1.0 if i_pct < 0.5 else 1.0,
+        )
+        monkeypatch.setattr("rpncalc.finance.math.isclose", lambda *_args, **_kwargs: False)
+        with pytest.raises(FinanceError):
+            rate(2, -1.0, 0.0, 1.0, False)
+
     def test_begin_mode_changes_payment(self):
         end = payment(12, 1.0, 1000.0, 0.0, begin=False)
         beg = payment(12, 1.0, 1000.0, 0.0, begin=True)
