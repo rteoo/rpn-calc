@@ -184,15 +184,18 @@ def period(i_pct: float, pv: float, pmt: float, fv: float, begin: bool) -> float
 
 
 def rate(n: float, pv: float, pmt: float, fv: float, begin: bool) -> float:
-    """Bisection on i (percent), matching finanx-12c / 12C behaviour."""
+    """Bisection on i (percent), matching the signed TVM equation."""
     if n == 0:
         raise FinanceError("Compound Interest Error")
-    if (pv > 0 and fv > 0) or (pv < 0 and fv < 0):
+    cash_flows = (pv, pmt, fv)
+    if not any(value > 0 for value in cash_flows) or not any(
+        value < 0 for value in cash_flows
+    ):
         raise FinanceError("Compound Interest Error")
-    # Normalize signs the way finanx does before searching.
-    pv_n = -abs(pv)
-    pmt_n = abs(pmt)
-    fv_n = abs(fv)
+    scale = max(abs(value) for value in cash_flows)
+    pv_scaled, pmt_scaled, fv_scaled = (
+        value / scale for value in cash_flows
+    )
     # The payment has to actually respond to the rate, or there is no rate to
     # find and bisection would "converge" on whichever bound it started from.
     # A single Begin-mode period with no balloon is the case that bites: the
@@ -202,27 +205,84 @@ def rate(n: float, pv: float, pmt: float, fv: float, begin: bool) -> float:
     # Compared with a tolerance, not for equality: the flat case only agrees to
     # about 1e-15 relative, while two rates a hundredfold apart move a solvable
     # payment by a fraction of itself. There is no middle ground to get wrong.
-    if math.isclose(
-        payment(n, 1.0, pv_n, fv_n, begin),
-        payment(n, 100.0, pv_n, fv_n, begin),
-        rel_tol=1e-9,
-        abs_tol=1e-12,
-    ):
-        raise FinanceError("Compound Interest Error")
-    low, high = -1.0, 99999.0
-    for _ in range(10000):
-        mid = (low + high) / 2.0
+    try:
+        payment_at_one = payment(n, 1.0, pv_scaled, fv_scaled, begin)
+        payment_at_hundred = payment(n, 100.0, pv_scaled, fv_scaled, begin)
+    except (FinanceError, ZeroDivisionError, ValueError, OverflowError):
+        pass
+    else:
+        if math.isclose(
+            payment_at_one,
+            payment_at_hundred,
+            rel_tol=1e-12,
+            abs_tol=0.0,
+        ):
+            raise FinanceError("Compound Interest Error")
+
+    def residual(i_pct: float) -> float:
+        return payment(n, i_pct, pv_scaled, fv_scaled, begin) - pmt_scaled
+
+    lower = math.nextafter(-100.0, math.inf)
+    fixed_probes = (
+        lower, -99.999999, -99.0, -90.0, -50.0, -10.0, -1.0,
+        0.0, 1.0, 10.0, 100.0, 1000.0, 10000.0, 99999.0,
+    )
+    log_low = math.log1p(lower / 100.0)
+    log_high = math.log1p(99999.0 / 100.0)
+    # ceiling: 16384 logarithmic intervals balance interactive solve latency
+    # against multiple-root discovery; increase this only if a deterministic
+    # valid equation hides both crossings inside one adjacent probe interval.
+    grid = (
+        100.0 * math.expm1(log_low + (log_high - log_low) * index / 16384)
+        for index in range(16385)
+    )
+    probes = sorted({*fixed_probes, *(probe for probe in grid if probe > -100.0)})
+
+    brackets: list[tuple[float, float, float, float]] = []
+    previous: tuple[float, float] | None = None
+    for probe in probes:
         try:
-            guessed = payment(n, mid, pv_n, fv_n, begin)
+            value = residual(probe)
         except (FinanceError, ZeroDivisionError, ValueError, OverflowError):
-            high = mid
+            previous = None
             continue
-        if abs(pmt_n - guessed) <= 1e-9:
-            return mid
-        if guessed > pmt_n:
-            high = mid
-        else:
-            low = mid
+        if not math.isfinite(value):
+            previous = None
+            continue
+        if value == 0.0:
+            return probe
+        if previous is not None:
+            left, f_left = previous
+            if (f_left < 0) != (value < 0):
+                brackets.append((left, probe, f_left, value))
+        previous = probe, value
+
+    tolerance = max(1e-12, abs(pmt_scaled) * 1e-9)
+    for low, high, f_low, f_high in brackets:
+        best_rate, best_residual = (
+            (low, f_low) if abs(f_low) < abs(f_high) else (high, f_high)
+        )
+        while True:
+            mid = (low + high) / 2.0
+            if mid == low or mid == high:
+                break
+            try:
+                f_mid = residual(mid)
+            except (FinanceError, ZeroDivisionError, ValueError, OverflowError):
+                break
+            if not math.isfinite(f_mid):
+                break
+            if abs(f_mid) < abs(best_residual):
+                best_rate, best_residual = mid, f_mid
+            if f_mid == 0.0:
+                return mid
+            if (f_low < 0) != (f_mid < 0):
+                high, f_high = mid, f_mid
+            else:
+                low, f_low = mid, f_mid
+        if abs(best_residual) <= tolerance:
+            return best_rate
+
     raise FinanceError("Compound Interest Error")
 
 
