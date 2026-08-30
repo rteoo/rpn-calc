@@ -44,7 +44,13 @@ _ARROWS = frozenset({"up", "down", "left", "right"})
 
 
 def _mean(values: list[float]) -> float:
-    return math.fsum(values) / len(values)
+    try:
+        return math.fsum(values) / len(values)
+    except OverflowError:
+        # Only scale after fsum overflows, preserving its ordinary rounding
+        # for the usual path while keeping a representable mean finite.
+        scale = max(abs(value) for value in values)
+        return scale * (math.fsum(value / scale for value in values) / len(values))
 
 
 def _median(values: list[float]) -> float:
