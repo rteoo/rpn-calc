@@ -10,6 +10,8 @@ dist/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.pytest-*/
+_pytest_tmp/
 .coverage
 
 # PyInstaller output and its generated version resource
