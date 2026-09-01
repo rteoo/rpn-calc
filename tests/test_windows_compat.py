@@ -130,6 +130,13 @@ def test_pyinstaller_spec_still_builds_a_windows_exe():
     assert "elif ICON_ICO.is_file():" in spec
 
 
+def test_pyinstaller_spec_rejects_ambient_windows_icu():
+    spec = (ROOT / "packaging/rpncalc.spec").read_text(encoding="utf-8")
+    assert 'WINDOWS_AMBIENT_ICU = {"icuuc.dll", "icudt78.dll"}' in spec
+    assert 'sys.platform == "win32"' in spec
+    assert "Path(name).name in WINDOWS_AMBIENT_ICU" in spec
+
+
 def test_pyinstaller_spec_defaults_to_the_folder_build():
     """One file is opt-in, because it costs ~3 s on every launch.
 
