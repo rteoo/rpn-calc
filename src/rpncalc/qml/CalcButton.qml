@@ -32,14 +32,6 @@ Item {
             base.b + (tint.b - base.b) * amount, 1);
     }
 
-    function canvasColor(value) {
-        // String(QColor) is #AARRGGBB, which Canvas does not accept as CSS;
-        // the rejected style silently falls back to black.
-        return "rgba(" + Math.round(value.r * 255) + ","
-            + Math.round(value.g * 255) + ","
-            + Math.round(value.b * 255) + "," + value.a + ")";
-    }
-
     // Markup and drawn glyphs both live in CapText; this is only for the
     // accessible name, which must not read out "y less-than sup greater-than".
     function plainTextOf(caption) {
@@ -154,7 +146,7 @@ Item {
                 var w = width;
                 var h = height;
                 context.clearRect(0, 0, w, h);
-                context.fillStyle = control.canvasColor(cap.capInk);
+                context.fillStyle = cap.capInk;
                 context.beginPath();
                 context.moveTo(w / 2, 0);
                 context.lineTo(w, h * 0.55);
@@ -183,13 +175,14 @@ Item {
             width: Math.round(Math.min(parent.height, parent.width) * 0.34)
             height: width
             visible: ["up", "down", "left", "right"].indexOf(control.iconName) !== -1
+            Component.onCompleted: Qt.callLater(requestPaint)
 
             onPaint: {
                 var context = getContext("2d");
                 var w = width;
                 var h = height;
                 context.clearRect(0, 0, w, h);
-                context.fillStyle = control.canvasColor(cap.capInk);
+                context.fillStyle = cap.capInk;
                 context.beginPath();
                 switch (control.iconName) {
                 case "up":
@@ -222,6 +215,7 @@ Item {
             width: Math.round(Math.min(parent.height * 0.42, parent.width * 0.3) * 1.3)
             height: Math.round(width * 0.72)
             visible: control.iconName === "backspace"
+            Component.onCompleted: Qt.callLater(requestPaint)
 
             onPaint: {
                 var context = getContext("2d");
@@ -229,7 +223,7 @@ Item {
                 var h = height;
                 var notch = w * 0.28;
                 context.clearRect(0, 0, w, h);
-                context.strokeStyle = control.canvasColor(cap.capInk);
+                context.strokeStyle = cap.capInk;
                 context.lineWidth = Math.max(1.4, w * 0.07);
                 context.lineCap = "round";
                 context.lineJoin = "round";

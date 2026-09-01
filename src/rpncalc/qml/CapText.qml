@@ -39,14 +39,6 @@ Item {
     // What a screen reader should say, and what the cap auto-size measures.
     readonly property string plainText: caption.replace(/<[^>]*>/g, "")
 
-    function canvasColor(value) {
-        // String(QColor) is #AARRGGBB, which Canvas does not accept as CSS;
-        // the rejected style silently falls back to black.
-        return "rgba(" + Math.round(value.r * 255) + ","
-            + Math.round(value.g * 255) + ","
-            + Math.round(value.b * 255) + "," + value.a + ")";
-    }
-
     // Counted, not measured off the Row: the Row anchors to this item, so
     // taking its width back as our implicit width is a binding loop, and Qt
     // breaks it by leaving the drawn glyphs at zero size - the legends came
@@ -124,11 +116,12 @@ Item {
                     width: Math.round(root.pixelSize * 0.62)
                     height: Math.round(root.pixelSize * 0.72)
                     antialiasing: true
+                    Component.onCompleted: Qt.callLater(requestPaint)
 
                     onPaint: {
                         var context = getContext("2d");
                         context.clearRect(0, 0, width, height);
-                        context.strokeStyle = root.canvasColor(root.inkColor);
+                        context.strokeStyle = root.inkColor;
                         context.lineWidth = Math.max(1, root.pixelSize * 0.075);
                         context.lineJoin = "miter";
                         context.beginPath();
