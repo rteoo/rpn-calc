@@ -933,16 +933,19 @@ class TestKeycapLabels:
                 f"{glyph!r} is in the font now; draw it as text instead"
             )
 
-    def test_canvas_ink_uses_css_color_syntax(self):
-        """Qt's #AARRGGBB string is invalid CSS and silently paints black."""
+    def test_canvas_ink_uses_qcolor_values(self):
+        """Canvas accepts QColor directly; string conversion can paint black."""
         qml = entry._PACKAGE_DIR / "qml"
         button = (qml / "CalcButton.qml").read_text(encoding="utf-8")
         caption = (qml / "CapText.qml").read_text(encoding="utf-8")
 
         assert "String(cap.capInk)" not in button
         assert "String(root.inkColor)" not in caption
-        assert button.count("control.canvasColor(cap.capInk)") == 3
-        assert "root.canvasColor(root.inkColor)" in caption
+        assert button.count("context.fillStyle = cap.capInk") == 2
+        assert "context.strokeStyle = cap.capInk" in button
+        assert "context.strokeStyle = root.inkColor" in caption
+        assert button.count("Component.onCompleted: Qt.callLater(requestPaint)") == 2
+        assert "Component.onCompleted: Qt.callLater(requestPaint)" in caption
 
 
 class TestFinanceFormLayout:
