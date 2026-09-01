@@ -32,6 +32,14 @@ Item {
             base.b + (tint.b - base.b) * amount, 1);
     }
 
+    function canvasColor(value) {
+        // String(QColor) is #AARRGGBB, which Canvas does not accept as CSS;
+        // the rejected style silently falls back to black.
+        return "rgba(" + Math.round(value.r * 255) + ","
+            + Math.round(value.g * 255) + ","
+            + Math.round(value.b * 255) + "," + value.a + ")";
+    }
+
     // Markup and drawn glyphs both live in CapText; this is only for the
     // accessible name, which must not read out "y less-than sup greater-than".
     function plainTextOf(caption) {
@@ -146,7 +154,7 @@ Item {
                 var w = width;
                 var h = height;
                 context.clearRect(0, 0, w, h);
-                context.fillStyle = String(cap.capInk);
+                context.fillStyle = control.canvasColor(cap.capInk);
                 context.beginPath();
                 context.moveTo(w / 2, 0);
                 context.lineTo(w, h * 0.55);
@@ -181,7 +189,7 @@ Item {
                 var w = width;
                 var h = height;
                 context.clearRect(0, 0, w, h);
-                context.fillStyle = String(cap.capInk);
+                context.fillStyle = control.canvasColor(cap.capInk);
                 context.beginPath();
                 switch (control.iconName) {
                 case "up":
@@ -221,7 +229,7 @@ Item {
                 var h = height;
                 var notch = w * 0.28;
                 context.clearRect(0, 0, w, h);
-                context.strokeStyle = String(cap.capInk);
+                context.strokeStyle = control.canvasColor(cap.capInk);
                 context.lineWidth = Math.max(1.4, w * 0.07);
                 context.lineCap = "round";
                 context.lineJoin = "round";
