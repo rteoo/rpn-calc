@@ -112,12 +112,20 @@ PRUNE = (
     "controls/imagine", "controls/universal", "controls/fusion",
 )
 
+# Qt on Windows imports the system ICU forwarder.  PyInstaller follows the
+# current PATH while resolving that import, so an unrelated toolchain can
+# otherwise leak its private ICU build into the package.  A versioned ICU
+# implementation then shadows Windows' forwarder and QtCore fails to import.
+WINDOWS_AMBIENT_ICU = {"icuuc.dll", "icudt78.dll"}
+
 
 def _pruned(entry):
     name = entry[0].replace("\\", "/").lower()
     # Never prune this application's own assets.
     if name.startswith("rpncalc/"):
         return False
+    if sys.platform == "win32" and Path(name).name in WINDOWS_AMBIENT_ICU:
+        return True
     return any(token in name for token in PRUNE)
 
 
