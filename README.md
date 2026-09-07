@@ -122,7 +122,7 @@ python tools/build_exe.py
 
 | Host | Output |
 |---|---|
-| Windows | `dist/rpncalc/` and `dist/rpncalc-windows.zip` — about 56 MB zipped |
+| Windows | `dist/rpncalc/` and `dist/rpncalc-windows.zip` |
 | macOS | `dist/rpn-calc.app` and `dist/rpn-calc.app.zip` — ad-hoc signed |
 
 Set `RPNCALC_CODESIGN_IDENTITY` to a Developer ID to sign the bundle with
@@ -137,10 +137,12 @@ APPLE_ID=… APPLE_TEAM_ID=… APPLE_APP_PASSWORD=… python tools/notarize_maco
 Stapling rewrites `dist/rpn-calc.app.zip`, because the zip Apple received does
 not carry the ticket.
 
-`--onefile` builds a single `.exe` instead, convenient to hand to someone but
-about 3.5 s to a window against 0.7 s for the folder: the bootloader unpacks
-its whole payload to a new temporary directory on every launch, so it never
-warms up. macOS ignores the flag - a folder is what goes inside the `.app`.
+`--onefile` builds a single `.exe` instead. The bootloader unpacks its payload
+to a new temporary directory on every launch. Earlier Windows size and timing
+measurements are preserved in the
+[historical engineering notes](docs/history/2026-09-07-engineering-notes.md#packaging);
+they are not current release guarantees. macOS ignores the flag: a folder is
+what goes inside the `.app`.
 `--debug` produces a console build that prints why it failed to start, which a
 windowed build cannot.
 
@@ -179,11 +181,13 @@ Xcode seed (bundle id, portrait lock, App Icon) live in
 ## Test
 
 ```sh
-pytest                                          # the whole suite, headless
+python -m pytest                                # the whole suite, headless
 python tools/verify_core.py                     # + a 100% gate on the core
 ```
 
-1783 tests, no display needed. The calculation core — number formatting, the
+No display is needed for the suite. Host, test counts, and verification limits
+are recorded in [the dated verification record](docs/verification/2026-09-07.md).
+The calculation core — number formatting, the
 stack, both engines, the keymap, and finance — is held at **100% statement and
 branch coverage**, and its answers are checked against an independent 50-digit
 decimal implementation rather than against the same `math` functions it calls.
