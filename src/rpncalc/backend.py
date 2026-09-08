@@ -27,7 +27,7 @@ from PySide6.QtGui import QColor, QGuiApplication
 
 from . import alg_engine, host, launchkey
 from .keymap import KEY_ROWS, ShiftState, resolve
-from .numeric import ENG, FIX, SCI, STD, NumberFormat, localize_number, parse_number
+from .numeric import FIX, STD, NumberFormat, localize_number, parse_number
 from .rpn_engine import DEFAULT_ANGLE_MODE, RpnEngine
 
 _WINDOW_GEOMETRY_SETTING = "window/geometry"
