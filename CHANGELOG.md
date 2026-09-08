@@ -8,6 +8,36 @@ Each version links to its release. 0.2.0 and 0.2.1 were bumped but never
 tagged, so their changes first reached users in 0.3.0; they link to the commit
 that carried them instead.
 
+## [0.6.0] - 2026-09-08
+
+### Added
+
+- **Complete statistics readbacks.** The shifted operator plane now exposes
+  Σ, MEAN, MED, and sample STD; Σ− removes an accumulated pair and rejects
+  data that was never added.
+- **A keyboard-owning SETTINGS panel.** `MENU` opens settings, while `▲`
+  opens the interactive stack browser. Decimal digits cycle through STD and
+  FIX 0–11, alongside decimal-comma and thousands-separator controls.
+
+### Fixed
+
+- Finance solvers reject non-finite, fractional, flat, and unbracketed inputs
+  instead of returning plausible-looking invalid results. Statistics remain
+  stable for huge finite samples and tightly clustered values.
+- FINANCE and SETTINGS overlays keep keyboard ownership and fit long values,
+  entry text, hints, and every configured row without clipping.
+- Drawn arrows, backspace, Σ, and Δ use the active theme foreground in frozen
+  Windows builds. Packaging rejects unrelated ICU DLLs leaked from the host
+  `PATH`, and archive failures are reported instead of hidden.
+- Exponent display formats remain finite, and malformed host configuration no
+  longer prevents startup.
+
+### Changed
+
+- Verification evidence and historical engineering measurements now live in
+  dated records so old host-specific results are not presented as current
+  release guarantees.
+
 ## [0.5.0] - 2026-08-27
 
 ### Added
@@ -187,6 +217,7 @@ First release. An HP 50g-style RPN calculator wearing omacalc's face.
 - Errors never mutate the stack: `1 ENTER 0 ÷` reports `Infinite Result` with
   both operands still present.
 
+[0.6.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.0
 [0.5.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.5.0
 [0.4.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.4.0
 [0.3.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.3.0
