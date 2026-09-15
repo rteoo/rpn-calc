@@ -1,212 +1,242 @@
 # rpn-calc
 
-An HP 50g-style RPN calculator wearing [omacalc](https://github.com/omacom-io/omacalc)'s face, implemented in Python.
+<p align="center">
+  <img src="src/rpncalc/icons/rpncalc-1024.png" width="128" alt="rpn-calc app icon">
+</p>
 
-RPN is the default input method: a real command line, `ENTER`, and an unbounded stack with
-full stack control. Algebraic mode is kept behind a toggle, exactly as the real 50g keeps it
-under `MODE`. The face is our own layout — one yellow shift, 12C-style finance keys, and a
-wide ENTER — with the interactive stack and a 50g-style FINANCE form on top.
+<p align="center">
+  A desktop RPN calculator for Windows and macOS, with an interactive stack,
+  scientific functions, and 12C-style finance.
+</p>
 
-## Download
+<p align="center">
+  <a href="https://github.com/rteoo/rpn-calc/actions/workflows/test.yml"><img src="https://github.com/rteoo/rpn-calc/actions/workflows/test.yml/badge.svg" alt="Test status"></a>
+  <a href="https://github.com/rteoo/rpn-calc/tags"><img src="https://img.shields.io/github/v/tag/rteoo/rpn-calc?label=stable" alt="Stable tag"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+</p>
 
-A Windows zip and a macOS `.app` zip ship with each
-[release](https://github.com/rteoo/rpn-calc/releases/latest). No Python
-installation needed.
+rpn-calc combines a real RPN command line and unbounded stack with a custom QML
+face. RPN is the default input method, with algebraic mode available behind a
+toggle. The face adds one yellow shift plane, a wide ENTER key, direct finance
+keys, and a dedicated FINANCE form.
 
-On Windows, unzip `rpncalc-windows.zip` and run `rpncalc.exe` from inside the
-folder it extracts — keep the folder together, since the executable loads Qt
-from beside it. A macOS zip built without an Apple Developer ID is ad-hoc
-signed, and Gatekeeper's first-open is then right-click → Open; a notarized
-one opens with a double-click. To run from source on any desktop, install it.
+## Highlights
 
-## Install
+- RPN-first entry with implicit ENTER, undo, and full stack control.
+- Interactive stack browser with ECHO, EDIT, PICK, ROLL, and ROLLD.
+- Scientific operations, statistics, configurable number formats, and angle modes.
+- TVM and cash-flow keys plus a dedicated finance form.
+- Full-precision calculations with half-away-from-zero display rounding.
+- Windows calculator-key integration and native Windows/macOS desktop packages.
+- Pure-Python calculation core kept independent from Qt.
+- No telemetry, accounts, cloud services, or network-dependent calculations.
 
-```sh
-python3 -m venv .venv
-source .venv/bin/activate          # macOS / Linux
-# .venv\Scripts\activate           # Windows
-pip install -e ".[dev]"
-```
+## Quick start
 
-PySide6 is the only runtime dependency. Python 3.10 or newer.
+Download the package for your platform from the
+[latest release](https://github.com/rteoo/rpn-calc/releases/latest). No Python
+installation is required for a packaged build.
 
-## Run
+| Platform | Package |
+| --- | --- |
+| Windows | `rpncalc-windows.zip` containing the app and its required Qt files |
+| macOS | `rpn-calc-macos.zip` containing the `.app` bundle |
 
-```sh
+On Windows, extract the complete ZIP and run `rpncalc.exe` inside the resulting
+folder. Keep the folder together because the executable loads Qt from beside it.
+
+The macOS package may be ad-hoc signed when a notarized release is unavailable.
+In that case, use **right-click → Open** on first launch to confirm Gatekeeper's
+prompt.
+
+To run from source with Python 3.10 or newer:
+
+```powershell
+git clone https://github.com/rteoo/rpn-calc.git
+cd rpn-calc
+python -m venv .venv
+# Windows: .venv\Scripts\Activate.ps1
+# macOS/Linux: source .venv/bin/activate
+python -m pip install -e ".[dev]"
 python -m rpncalc
 ```
 
-## Using it
+PySide6 is the only runtime dependency.
 
-The stack shows level 1 at the bottom, just above the command line. Type a number and the
-command line opens; `ENTER` pushes it. With nothing typed, `ENTER` duplicates level 1 and
-`←` drops it.
+## First use
 
+The stack shows level 1 at the bottom, immediately above the command line.
+Type a number and press `ENTER` to push it. With an empty command line, `ENTER`
+duplicates level 1 and Backspace drops it.
+
+```text
+5 ENTER 3 ENTER 2 + ×             → 25
+5 ENTER x²                        → 25
+81 ENTER √x                       → 9
+200 ENTER 10 %                    → 20
+36 n  1 i  10000 PV  0 FV  PMT   → about -332.14
+1 ENTER 0 ÷                       → "Infinite Result"; operands are preserved
 ```
-5 ENTER 3 ENTER 2 + ×     →  25
-5 ENTER x²                →  25
-81 ENTER √x               →  9
-200 ENTER 10 %            →  20
-36 n  1 i  10000 PV  0 FV  PMT   →  about -332.14   (12C store / solve)
-1 ENTER 0 ÷               →  "Infinite Result", both operands still on the stack
-```
 
-### Finance
+Press `▲` to open the interactive stack browser. Use the arrows to select a
+level and the soft menu to copy, edit, or move it. Press `MENU` to open SETTINGS
+for display locale, number format, and the Windows calculator-key toggle.
 
-Direct keys follow the 12C: enter a value and press `n` / `i` / `PV` / `PMT` /
-`FV` to store; press the same key with no new entry to solve for it. Shifted
-`NPV` / `IRR` / `CFo` / `CFj` / `Nj` handle cash flows. Shift-FINANCE opens the
-50g TVM form; while it is open it owns the keyboard, and soft-menu EDIT / SOLVE
-work the selected register (AMOR is declared unimplemented and dimmed).
+## Stack and input
 
-### The interactive stack
+With the browser closed, `▶` swaps levels 1 and 2 and `◀` rotates the top three
+so level 3 moves to level 1. Neither arrow opens the browser.
 
-With the browser closed, the horizontal arrows are stack commands: **`▶` swaps
-levels 1 and 2**, and **`◀` rotates the top three** so level 3 comes down to
-level 1. Neither opens the browser.
+Inside the browser, the cursor selects a stack level:
 
-Press `▲` to open the 50g's stack browser. A cursor walks the levels and the
-soft menu acts on the one it sits on — the fastest way to reorganise a deep stack.
-`MENU` opens SETTINGS (display locale and the calculator-key toggle).
-
-| | |
-|---|---|
-| `▲` / `▼` | Move the cursor; `▼` off level 1 closes the browser |
-| `ECHO` | Copy the selected value into the command line |
-| `EDIT` | Lift the level off the stack and into the command line |
+| Control | Behavior |
+| --- | --- |
+| `▲` / `▼` | Move the cursor; `▼` below level 1 closes the browser |
+| `ECHO` | Append the selected value to the command line |
+| `EDIT` | Remove the selected level and place it on the command line |
 | `PICK` | Copy the selected level to level 1 |
 | `ROLL` | Move the selected level to level 1 |
 | `ROLLD` | Send level 1 down to the selected level |
-| `←` | Drop the selected level |
+| Backspace | Drop the selected level |
 | `Enter` | Close the browser |
 
-The soft-menu labels are buttons; `F1`–`F6` press them from the keyboard. While the
-browser is open it owns the keyboard, so a stray digit cannot disturb the stack.
+The soft-menu labels are clickable, and `F1`–`F6` activate them from the
+keyboard. The browser owns keyboard input while open, preventing a stray digit
+or operator from changing the stack.
 
 ### Shift
 
-One yellow shift plane. It arms for exactly one key; pressing it twice cancels.
-Armed legends brighten on the face so you can read the next key rather than
-remember it.
+The calculator has one yellow shift plane. It arms for one keypress; pressing
+Shift again cancels it. Shifted legends brighten on the face while armed.
 
-### Keyboard
+### Keyboard shortcuts
 
-| Key | Does |
-|---|---|
+| Key | Behavior |
+| --- | --- |
 | `0`–`9` `.` | Enter digits |
 | `Enter` / `=` | ENTER |
-| `Backspace` | Delete a character, or DROP when nothing is being typed |
-| `Space` | Separate two numbers on one command line |
-| `+ - * /` `^` `%` | Arithmetic, power, percent |
-| `s` / `e` | Change sign / exponent (EEX) |
+| `Backspace` | Delete a character, or DROP with an empty command line |
+| `Space` | Separate values on one command line |
+| `+ - * /` `^` `%` | Arithmetic, power, and percent |
+| `s` / `e` | Change sign / enter an exponent (EEX) |
 | `x` / `r` / `d` | SWAP / ROT / DROP |
-| `Del` | CLEAR — empty the stack |
-| `Esc` | ON — cancel the command line |
+| `Del` | CLEAR the stack |
+| `Esc` | ON: cancel the command line |
 | `↑` | Open the interactive stack |
-| `←` `→` | Rotate the top three / swap levels 1 and 2 |
-| `F1`–`F6` | Interactive stack soft menu |
-| `Alt+s` `Alt+q` `Alt+l` `Alt+e` `Alt+g` `Alt+i` `Alt+p` `Alt+a` | √, x², LN, e^x, LOG, 1/x, π, ABS |
+| `←` / `→` | Rotate the top three / swap levels 1 and 2 |
+| `F1`–`F6` | Activate the current soft-menu keys |
+| `Alt+s` `Alt+q` `Alt+l` `Alt+e` | √, x², LN, e^x |
+| `Alt+g` `Alt+i` `Alt+p` `Alt+a` | LOG, 1/x, π, ABS |
 | `Ctrl+Z` / `⌘Z` | Undo |
-| `Ctrl+X` / `⌘X` | Cut (copy level 1, then DROP) |
-| `Ctrl+C` / `⌘C` | Copy |
+| `Ctrl+X` / `⌘X` | Cut level 1, then DROP |
+| `Ctrl+C` / `⌘C` | Copy level 1 |
 | `Ctrl+V` / `⌘V` | Paste a number |
 | `Ctrl+M` / `⌘M` | Toggle RPN / ALG |
-| `Ctrl+,` / `⌘,` | Settings (same as face `MENU`) |
+| `Ctrl+,` / `⌘,` | Open SETTINGS |
 
-## Building a desktop app
+## Finance
 
-```sh
-pip install -e ".[build]"
+Direct finance keys use the familiar store-and-solve convention: enter a value and press `n`, `i`,
+`PV`, `PMT`, or `FV` to store it; press the same key with no new entry to solve
+for it. Shifted `NPV`, `IRR`, `CFo`, `CFj`, and `Nj` handle cash flows.
+
+Shift-FINANCE opens the TVM form for N, I%YR, PV, PMT, FV, P/YR, and Begin/End.
+While open, the form owns the keyboard; ENTER stores the selected value and the
+EDIT / SOLVE soft keys operate on the selected register. AMOR is not implemented
+and remains dimmed.
+
+## Data safety and privacy
+
+rpn-calc performs calculations locally and does not require an account, send
+telemetry, or upload calculator data. Desktop settings use the platform's local
+Qt settings storage.
+
+On Windows, calculator-key registration changes only the current user's
+Explorer AppKey 18 binding after the user enables it in SETTINGS. Each build
+releases only a binding that still belongs to that build.
+
+## Platform status and limitations
+
+rpn-calc packages Windows and macOS desktop builds. The portable calculation
+core and offscreen Qt behavior are covered by automated tests, but platform
+integration still requires verification on the matching physical host.
+
+- **Windows:** supports the dedicated calculator key through the current user's
+  registry. A real launch-key test must synthesize `VK_LAUNCH_APP2` and observe
+  which window opens.
+- **macOS:** uses native Qt scaling and color-scheme behavior. Ad-hoc-signed
+  packages require manual first-open confirmation; notarized packages do not.
+- **Linux:** source execution is supported by Qt, but no Linux desktop package
+  is currently published.
+- **iOS:** the QML face and pure-Python core have portability groundwork, but
+  PySide6 does not currently provide the required iOS wheel. The host plan and
+  Xcode seed live in [the Apple platform plan](docs/plans/apple-platforms.md)
+  and [`packaging/ios/`](packaging/ios/).
+
+The calculator does not implement CAS, ALPHA entry, symbolic variables, units,
+complex numbers, matrices, the equation writer, or linear regression. Trig is
+available in the engine but has no faceplate or keyboard binding.
+
+## Develop and build
+
+Install the `dev` extra and run the complete verification gates:
+
+```powershell
+python -m pytest
+python tools/verify_core.py
+```
+
+The suite runs with offscreen Qt. `verify_core.py` enforces 100% statement and
+branch coverage for number formatting, the stack, both engines, the keymap, and
+finance. Calculation results are also checked against an independent 50-digit
+Decimal oracle. Current host evidence and explicit verification limits are
+recorded in [the dated verification record](docs/verification/2026-09-07.md).
+
+Build a desktop package with the `build` extra:
+
+```powershell
+python -m pip install -e ".[build]"
 python tools/build_exe.py
 ```
 
 | Host | Output |
-|---|---|
+| --- | --- |
 | Windows | `dist/rpncalc/` and `dist/rpncalc-windows.zip` |
-| macOS | `dist/rpn-calc.app` and `dist/rpn-calc.app.zip` — ad-hoc signed |
+| macOS | `dist/rpn-calc.app` and `dist/rpn-calc.app.zip` |
 
-Set `RPNCALC_CODESIGN_IDENTITY` to a Developer ID to sign the bundle with
-Hardened Runtime instead, then notarize and staple it:
+Windows folder builds are the default; pass `--onefile` for a single executable
+that extracts its runtime to a temporary directory on each launch. Pass
+`--debug` to produce a console build with startup diagnostics. macOS always
+builds an `.app` bundle.
+
+On a Mac, `python tools/smoke_macos.py --source` verifies the mapped source
+window, while `python tools/smoke_macos.py dist/rpn-calc.app` checks the packaged
+bundle. The smoke test requires a real Cocoa session and refuses offscreen mode.
+
+Developer ID signing and notarization are opt-in. Configure
+`RPNCALC_CODESIGN_IDENTITY` for a Hardened Runtime build, then notarize and
+staple the completed app:
 
 ```sh
 RPNCALC_CODESIGN_IDENTITY="Developer ID Application: … (TEAMID)" python tools/build_exe.py
 APPLE_ID=… APPLE_TEAM_ID=… APPLE_APP_PASSWORD=… python tools/notarize_macos.py dist/rpn-calc.app
 ```
 
-`APPLE_APP_PASSWORD` is an app-specific password, not the account password.
-Stapling rewrites `dist/rpn-calc.app.zip`, because the zip Apple received does
-not carry the ticket.
+`APPLE_APP_PASSWORD` must be an app-specific password. Stapling regenerates the
+ZIP so the released archive contains the ticket. A tagged `v*` release builds
+both platforms and publishes their artifacts; absent Apple credentials, it
+falls back to an ad-hoc signature.
 
-`--onefile` builds a single `.exe` instead. The bootloader unpacks its payload
-to a new temporary directory on every launch. Earlier Windows size and timing
-measurements are preserved in the
-[historical engineering notes](docs/history/2026-09-07-engineering-notes.md#packaging);
-they are not current release guarantees. macOS ignores the flag: a folder is
-what goes inside the `.app`.
-`--debug` produces a console build that prints why it failed to start, which a
-windowed build cannot.
+Release history is documented in [CHANGELOG.md](CHANGELOG.md). Historical size
+and startup measurements remain in the
+[engineering notes](docs/history/2026-09-07-engineering-notes.md#packaging) and
+are not current release guarantees.
 
-On a Mac, `python tools/smoke_macos.py --source` opens the real cocoa window
-and quits; `python tools/smoke_macos.py dist/rpn-calc.app` does the same for
-the frozen bundle. Offscreen is refused — that is not a window.
+## License
 
-A tagged `v*` release attaches `rpncalc-windows.zip` and `rpn-calc-macos.zip`. It
-notarizes the macOS bundle when the Apple secrets are configured on the
-repository, and falls back to an ad-hoc signature when they are not — in which
-case first-open is right-click → Open, and `xattr -cr dist/rpn-calc.app` is
-the local escape.
+rpn-calc is released under the [MIT License](LICENSE).
 
-The icon is committed at `src/rpncalc/icons/` — inside the package, because the
-app sets it as its own window icon at startup, not only as the executable's
-resource. `rpncalc.ico` covers Windows; `rpncalc.icns` covers the Dock;
-`rpncalc.png` is the 256px form a Linux `.desktop` entry wants;
-`rpncalc-1024.png` is the opaque App Store icon. Regenerate all of them with
-`python tools/make_icon.py` only if the icon should change.
-
-An un-notarized macOS `.app` is quarantined by Gatekeeper. On the machine that
-built it, `xattr -cr dist/rpn-calc.app` clears that. The release workflow
-notarizes when `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PASSWORD`, `APPLE_ID`,
-`APPLE_TEAM_ID` and `APPLE_APP_PASSWORD` are set as repository secrets, and
-ad-hoc signs when they are not.
-
-## iOS
-
-The calculation core is pure Python and the face is QML, so an iOS app is a host
-port, not a rewrite. `SafeArea`, a long-press for settings, and `backend.isMobile`
-are already in the face. There is no PySide6 iOS wheel yet; the contract and the
-Xcode seed (bundle id, portrait lock, App Icon) live in
-[`docs/plans/apple-platforms.md`](docs/plans/apple-platforms.md) and
-[`packaging/ios/`](packaging/ios/).
-
-## Test
-
-```sh
-python -m pytest                                # the whole suite, headless
-python tools/verify_core.py                     # + a 100% gate on the core
-```
-
-No display is needed for the suite. Host, test counts, and verification limits
-are recorded in [the dated verification record](docs/verification/2026-09-07.md).
-The calculation core — number formatting, the
-stack, both engines, the keymap, and finance — is held at **100% statement and
-branch coverage**, and its answers are checked against an independent 50-digit
-decimal implementation rather than against the same `math` functions it calls.
-
-## What it does not do
-
-No CAS, ALPHA entry, symbolic variables, units, complex numbers, or matrices.
-Soft-menu AMOR on the FINANCE screen is unimplemented and dimmed. Trig lives in
-the engine but is off the faceplate. If you need a full 50g, the real emulator
-is still the answer.
-
-## Changelog
-
-Release history is in [CHANGELOG.md](CHANGELOG.md).
-
-## Credits
-
-- UI, theming, and the algebraic engine derive from **omacalc** by David Heinemeier Hansson (MIT).
-- TVM / cash-flow closed forms were cross-checked against **finanx-12c** by Fabio Lima (MIT).
-- **iA Writer Mono S** is bundled under the SIL Open Font License 1.1 (`src/rpncalc/fonts/OFL.txt`).
-- Face spacing still borrows ideas from an Emu48 HP 50g layout; the legends are our own.
-  No HP ROM images are distributed with this project.
+The interface, theming, and algebraic engine derive from **omacalc** by David
+Heinemeier Hansson (MIT). TVM and cash-flow closed forms were cross-checked
+against **finanx-12c** by Fabio Lima (MIT). Bundled **iA Writer Mono S** uses the
+SIL Open Font License 1.1 in [`src/rpncalc/fonts/OFL.txt`](src/rpncalc/fonts/OFL.txt).
