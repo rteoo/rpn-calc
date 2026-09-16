@@ -232,6 +232,14 @@ and startup measurements remain in the
 [engineering notes](docs/history/2026-09-07-engineering-notes.md#packaging) and
 are not current release guarantees.
 
+## Release dependencies
+
+Release dependencies are recorded in `requirements-release.lock` with package
+hashes. Release CI installs that lock before installing the local project with
+`--no-deps --no-build-isolation`. Regenerate deliberately with
+`uv pip compile pyproject.toml --extra dev --extra build --universal --python-version 3.12 --generate-hashes -o requirements-release.lock`.
+Action commits are pinned; dependency updates still require review and tests.
+
 ## License
 
 rpn-calc is released under the [MIT License](LICENSE).

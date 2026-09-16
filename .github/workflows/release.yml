@@ -5,7 +5,7 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 # Two jobs both calling action-gh-release on the same tag race to create the
 # release, and the loser fails the tag. The builds run in parallel; a single
@@ -15,20 +15,15 @@ jobs:
     runs-on: macos-latest
     # Signing and notarization are opt-in: without the Developer ID secrets
     # the bundle is ad-hoc signed and the tag still ships a zip, the way it
-    # did before they existed. `secrets` is not readable from a step `if`,
-    # so the guard reads them through env.
-    env:
-      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    # did before they existed. Credentials are scoped to their consuming steps.
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[dev,build]"
+      - run: |
+          python -m pip install --require-hashes -r requirements-release.lock
+          python -m pip install --no-deps --no-build-isolation -e .
       - name: Tests
         run: pytest -q
         env:
@@ -37,10 +32,14 @@ jobs:
         run: python tools/smoke_macos.py --source
 
       - name: Import the Developer ID certificate
-        if: env.MACOS_CERTIFICATE != ''
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
         run: |
           set -euo pipefail
+          if [ -z "$MACOS_CERTIFICATE" ]; then exit 0; fi
           keychain="$RUNNER_TEMP/signing.keychain-db"
+          echo "SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
           password="$(openssl rand -base64 24)"
           security create-keychain -p "$password" "$keychain"
           security set-keychain-settings -lut 900 "$keychain"
@@ -75,12 +74,18 @@ jobs:
         run: python tools/smoke_macos.py dist/rpn-calc.app
 
       - name: Notarize and staple
-        if: env.MACOS_CERTIFICATE != '' && env.APPLE_ID != ''
-        run: python tools/notarize_macos.py dist/rpn-calc.app
+        if: env.RPNCALC_CODESIGN_IDENTITY != ''
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          if [ -z "$APPLE_ID" ]; then exit 0; fi
+          python tools/notarize_macos.py dist/rpn-calc.app
 
       - name: Name the zip for the release
         run: mv dist/rpn-calc.app.zip dist/rpn-calc-macos.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: rpn-calc-macos
           path: dist/rpn-calc-macos.zip
@@ -95,33 +100,37 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[dev,build]"
+      - run: |
+          python -m pip install --require-hashes -r requirements-release.lock
+          python -m pip install --no-deps --no-build-isolation -e .
       - name: Tests
         run: pytest -q
         env:
           QT_QPA_PLATFORM: offscreen
       - name: Build the Windows folder
         run: python tools/build_exe.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: rpncalc-windows
           path: dist/rpncalc-windows.zip
           if-no-files-found: error
 
   publish:
+    permissions:
+      contents: write
     needs: [macos, windows]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artifacts
       - name: Show what will be attached
         run: ls -R artifacts
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             artifacts/rpn-calc-macos/rpn-calc-macos.zip
