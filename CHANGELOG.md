@@ -8,6 +8,12 @@ Each version links to its release. 0.2.0 and 0.2.1 were bumped but never
 tagged, so their changes first reached users in 0.3.0; they link to the commit
 that carried them instead.
 
+## [0.6.2] - 2026-09-17
+
+### Added
+
+- **Inno Setup installer for Windows.** A professional Windows installer script (`packaging/rpncalc.iss`) enables standard `.exe` installation with optional desktop shortcuts, Start Menu integration, and Windows Calculator key binding configuration.
+
 ## [0.6.1] - 2026-09-17
 
 ### Changed
@@ -224,6 +230,7 @@ First release. An HP 50g-style RPN calculator wearing omacalc's face.
 - Errors never mutate the stack: `1 ENTER 0 ÷` reports `Infinite Result` with
   both operands still present.
 
+[0.6.2]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.2
 [0.6.1]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.1
 [0.6.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.0
 [0.5.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.5.0
