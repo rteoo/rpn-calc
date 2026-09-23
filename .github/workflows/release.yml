@@ -113,10 +113,16 @@ jobs:
           QT_QPA_PLATFORM: offscreen
       - name: Build the Windows folder
         run: python tools/build_exe.py
+      # Inno Setup ships with the windows-latest image; the script packages
+      # dist/rpncalc, the folder the step above built.
+      - name: Build the Windows installer
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging\rpncalc.iss'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: rpncalc-windows
-          path: dist/rpncalc-windows.zip
+          path: |
+            dist/rpncalc-windows.zip
+            dist/rpncalc-*-installer.exe
           if-no-files-found: error
 
   publish:
@@ -135,5 +141,6 @@ jobs:
           files: |
             artifacts/rpn-calc-macos/rpn-calc-macos.zip
             artifacts/rpncalc-windows/rpncalc-windows.zip
+            artifacts/rpncalc-windows/rpncalc-*-installer.exe
           generate_release_notes: true
           fail_on_unmatched_files: true
