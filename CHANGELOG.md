@@ -8,7 +8,7 @@ Each version links to its release. 0.2.0 and 0.2.1 were bumped but never
 tagged, so their changes first reached users in 0.3.0; they link to the commit
 that carried them instead.
 
-## [Unreleased]
+## [0.6.4] - 2026-09-23
 
 ### Changed
 
@@ -249,7 +249,7 @@ First release. An HP 50g-style RPN calculator wearing omacalc's face.
 - Errors never mutate the stack: `1 ENTER 0 ÷` reports `Infinite Result` with
   both operands still present.
 
-[Unreleased]: https://github.com/rteoo/rpn-calc/compare/v0.6.3...HEAD
+[0.6.4]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.4
 [0.6.3]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.3
 [0.6.2]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.2
 [0.6.1]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.1
