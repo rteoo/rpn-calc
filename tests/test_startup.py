@@ -31,7 +31,7 @@ class TestStart:
     def test_the_window_is_built(self, started):
         assert started.loaded
         assert started.window is not None
-        assert started.window.property("title") == "rpn-calc"
+        assert started.window.property("title") == "RPN Calc"
 
     def test_the_window_has_a_usable_size(self, started):
         width = started.window.property("width")
@@ -214,7 +214,7 @@ def _reading(**overrides) -> entry.SmokeReading:
     """A reading off a window that should pass, with fields to spoil."""
     defaults = dict(
         platform="cocoa",
-        title="rpn-calc",
+        title="RPN Calc",
         width=420,
         height=820,
         exposed=True,
@@ -237,7 +237,7 @@ class TestReadWindow:
         # same code either way: this pins the drain loop and the field
         # mapping so only the platform check is Mac-only.
         reading = entry._read_window(started)
-        assert reading.title == "rpn-calc"
+        assert reading.title == "RPN Calc"
         assert reading.width > 0 and reading.height > 0
         assert reading.icon_sizes
         assert reading.platform == "offscreen"

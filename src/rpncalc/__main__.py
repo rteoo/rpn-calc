@@ -246,7 +246,7 @@ def window_verdict(reading: SmokeReading) -> tuple[int, str]:
     # the platform saying it put pixels somewhere.
     if not reading.exposed:
         return SMOKE_WRONG_WINDOW, "window was never exposed by the compositor"
-    if reading.title != "rpn-calc":
+    if reading.title != "RPN Calc":
         return SMOKE_WRONG_WINDOW, f"unexpected title {reading.title!r}"
     if reading.width < _FACE_MIN_WIDTH or reading.height < _FACE_MIN_HEIGHT:
         return SMOKE_WRONG_WINDOW, "window smaller than the faceplate minimum"
