@@ -1,7 +1,7 @@
 ; Inno Setup script for rpn-calc
 ; Build with: iscc.exe packaging/rpncalc.iss
 
-#define MyAppName "rpn-calc"
+#define MyAppName "RPN Calc"
 #define MyAppVersion "0.6.3"
 #define MyAppPublisher "Rodrigo Teodoro"
 #define MyAppURL "https://github.com/rteoo/rpn-calc"
@@ -33,6 +33,7 @@ MinVersion=10.0.17763
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 UsePreviousAppDir=yes
+UsePreviousGroup=no
 UsePreviousTasks=no
 
 [Languages]
@@ -48,6 +49,11 @@ Name: "associatecalckey"; Description: "Bind Windows Calculator key"; GroupDescr
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+
+[InstallDelete]
+; Shortcuts left by releases named "rpn-calc".
+Type: filesandordirs; Name: "{autoprograms}\rpn-calc"
+Type: files; Name: "{autodesktop}\rpn-calc.lnk"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\rpncalc.exe"; Comment: "HP 50g-style RPN calculator"

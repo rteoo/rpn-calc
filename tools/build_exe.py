@@ -46,13 +46,13 @@ VSVersionInfo(
     StringFileInfo([
       StringTable('040904B0', [
         StringStruct('CompanyName', 'Rodrigo Teodoro'),
-        StringStruct('FileDescription', 'rpn-calc - HP 50g-style RPN calculator'),
+        StringStruct('FileDescription', 'RPN Calc - HP 50g-style RPN calculator'),
         StringStruct('FileVersion', '{version}'),
         StringStruct('InternalName', 'rpncalc'),
         StringStruct('LegalCopyright',
                      'MIT. Derived from omacalc. iA Writer Mono S under OFL 1.1.'),
         StringStruct('OriginalFilename', 'rpncalc.exe'),
-        StringStruct('ProductName', 'rpn-calc'),
+        StringStruct('ProductName', 'RPN Calc'),
         StringStruct('ProductVersion', '{version}')])
     ]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])

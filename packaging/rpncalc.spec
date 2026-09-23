@@ -182,8 +182,8 @@ if ONEDIR_BUILD:
             icon=str(ICON_ICNS) if ICON_ICNS.is_file() else None,
             bundle_identifier="io.github.rteoo.rpncalc",
             info_plist={
-                "CFBundleName": "rpn-calc-debug" if DEBUG_BUILD else "rpn-calc",
-                "CFBundleDisplayName": "rpn-calc-debug" if DEBUG_BUILD else "rpn-calc",
+                "CFBundleName": "RPN Calc Debug" if DEBUG_BUILD else "RPN Calc",
+                "CFBundleDisplayName": "RPN Calc Debug" if DEBUG_BUILD else "RPN Calc",
                 "CFBundleIdentifier": "io.github.rteoo.rpncalc",
                 "CFBundleVersion": VERSION,
                 "CFBundleShortVersionString": VERSION,

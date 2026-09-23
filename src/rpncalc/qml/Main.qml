@@ -11,7 +11,7 @@ ApplicationWindow {
     minimumWidth: 330
     minimumHeight: 640
     visible: true
-    title: "rpn-calc"
+    title: "RPN Calc"
 
     readonly property bool darkMode: backend.darkMode
     readonly property color pageColor: backend.themeBackground
