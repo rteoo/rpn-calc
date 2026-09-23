@@ -60,7 +60,10 @@ Item {
         id: plainLabel
         anchors.fill: parent
         visible: !root.hasDrawnGlyph
-        text: root.caption
+        // A hidden Text is still laid out, and laying out a glyph the font
+        // lacks sends Qt through the system fallback fonts - ~150 ms at
+        // startup for a Σ nobody sees. Drawn captions never reach this path.
+        text: root.hasDrawnGlyph ? "" : root.caption
         textFormat: root.isRich ? Text.RichText : Text.PlainText
         color: root.inkColor
         elide: (root.isRich || root.maxWidth <= 0) ? Text.ElideNone
@@ -99,7 +102,8 @@ Item {
                 Text {
                     anchors.fill: parent
                     visible: !parent.drawn
-                    text: parent.modelData
+                    // Empty behind the Canvas for the same fallback-font cost.
+                    text: parent.drawn ? "" : parent.modelData
                     color: root.inkColor
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter

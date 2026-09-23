@@ -107,6 +107,8 @@ iA Writer Mono lacks Greek letters other than π, arrows, and superscripts.
 Check glyph support before adding a caption. `CapText.qml` chooses exactly one
 path: Canvas-drawn Σ/Δ, rich text using existing glyphs for superscripts, or plain
 text. Measure rich text without tags and never request rich-text elision.
+No Text item, even a hidden one, may hold a glyph the font lacks: Qt still
+lays it out, and the system fallback search cost ~300 ms of startup.
 Keep the live keycap-glyph tests; deferred Canvas drawing needs event pumping
 (the fixture pumps eight times). An offscreen screenshot proves rendering only.
 

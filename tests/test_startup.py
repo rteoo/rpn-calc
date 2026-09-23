@@ -933,6 +933,40 @@ class TestKeycapLabels:
                 f"{glyph!r} is in the font now; draw it as text instead"
             )
 
+    def test_no_text_item_lays_out_a_glyph_the_font_lacks(self, started, qt_app):
+        """Hidden Text is still laid out, and a missing glyph is slow to lay out.
+
+        Qt answers a glyph the font lacks by searching the system fonts for a
+        fallback - ~150 ms for the first Σ on Windows, a third of the whole QML
+        load. The drawn captions used to leave Σ and Δ in the invisible Text
+        behind each Canvas, paying that search for a glyph nobody sees.
+        """
+        from PySide6.QtGui import QFont, QRawFont
+
+        raw = QRawFont.fromFont(QFont("iA Writer Mono S", 20))
+        for _ in range(8):
+            qt_app.processEvents()
+
+        def texts(item, found):
+            for child in item.childItems():
+                if child.metaObject().className() == "QQuickText":
+                    found.append(child.property("text"))
+                texts(child, found)
+            return found
+
+        laid_out = texts(started.window.contentItem(), [])
+        assert "ENTER" in laid_out, "the walk never reached the keypad"
+        missing = {
+            char
+            for caption in laid_out
+            for char in re.sub(r"<[^>]*>", "", caption)
+            if not char.isspace() and not raw.supportsCharacter(ord(char))
+        }
+        assert not missing, (
+            f"Text items lay out {sorted(missing)}, which iA Writer Mono lacks; "
+            "each sends Qt through the system font fallback at startup"
+        )
+
     def test_canvas_ink_uses_qcolor_values(self):
         """Canvas accepts QColor directly; string conversion can paint black."""
         qml = entry._PACKAGE_DIR / "qml"
