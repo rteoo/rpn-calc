@@ -195,8 +195,21 @@ def test_release_workflow_still_uploads_the_windows_build():
     assert "windows-latest" in workflow
     assert "dist/rpncalc-windows.zip" in workflow
     assert "artifacts/rpncalc-windows/rpncalc-windows.zip" in workflow
+    assert r"ISCC.exe" in workflow and r"packaging\rpncalc.iss" in workflow
+    assert "dist/rpncalc-*-installer.exe" in workflow
+    assert "artifacts/rpncalc-windows/rpncalc-*-installer.exe" in workflow
     test_workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
     assert "windows-latest" in test_workflow
+
+
+def test_installer_version_matches_the_project_version():
+    """A release attaches the installer, so its version cannot lag pyproject."""
+    import re
+
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    version = re.search(r'^version = "([^"]+)"$', pyproject, re.MULTILINE).group(1)
+    script = (ROOT / "packaging/rpncalc.iss").read_text(encoding="utf-8")
+    assert f'#define MyAppVersion "{version}"' in script
 
 
 def test_engine_layer_still_has_no_qt():
