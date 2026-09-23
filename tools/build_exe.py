@@ -264,7 +264,11 @@ def main() -> int:
             print(f"codesign failed: {error}", file=sys.stderr)
             return 1
         if identity == ADHOC_IDENTITY:
-            print("ad-hoc signed (not notarized; first-open is right-click → Open)")
+            # macOS 15 dropped the right-click → Open bypass for unnotarized apps.
+            print(
+                "ad-hoc signed (not notarized; first open needs System Settings → "
+                "Privacy & Security → Open Anyway, or right-click → Open before macOS 15)"
+            )
         else:
             print(f"signed with {identity} (hardened runtime)")
             print("notarize next: python tools/notarize_macos.py dist/rpn-calc.app")
