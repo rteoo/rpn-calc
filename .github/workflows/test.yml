@@ -54,8 +54,22 @@ jobs:
         run: python tools/build_exe.py
       - name: Smoke the bundle
         run: python tools/smoke_macos.py dist/rpn-calc.app
+      - name: Build .dmg
+        run: python tools/make_dmg.py dist/rpn-calc.app
+      # The copy a user drags out of the image is renamed "RPN Calc.app";
+      # launch that one, not the build directory it came from.
+      - name: Smoke the app inside the .dmg
+        run: |
+          set -euo pipefail
+          mount="$RUNNER_TEMP/rpncalc-dmg"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" dist/rpncalc-*.dmg
+          trap 'hdiutil detach "$mount"' EXIT
+          test -L "$mount/Applications"
+          python tools/smoke_macos.py "$mount/RPN Calc.app"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: rpn-calc-macos
-          path: dist/rpn-calc.app.zip
+          path: |
+            dist/rpn-calc.app.zip
+            dist/rpncalc-*.dmg
           if-no-files-found: error
