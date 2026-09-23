@@ -1,7 +1,7 @@
-# rpn-calc
+# RPN Calc
 
 <p align="center">
-  <img src="src/rpncalc/icons/rpncalc-1024.png" width="128" alt="rpn-calc app icon">
+  <img src="src/rpncalc/icons/rpncalc-1024.png" width="128" alt="RPN Calc app icon">
 </p>
 
 <p align="center">
@@ -15,7 +15,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
 </p>
 
-rpn-calc combines a real RPN command line and unbounded stack with a custom QML
+RPN Calc combines a real RPN command line and unbounded stack with a custom QML
 face. RPN is the default input method, with algebraic mode available behind a
 toggle. The face adds one yellow shift plane, a wide ENTER key, direct finance
 keys, and a dedicated FINANCE form.
@@ -147,7 +147,7 @@ and remains dimmed.
 
 ## Data safety and privacy
 
-rpn-calc performs calculations locally and does not require an account, send
+RPN Calc performs calculations locally and does not require an account, send
 telemetry, or upload calculator data. Desktop settings use the platform's local
 Qt settings storage.
 
@@ -157,7 +157,7 @@ releases only a binding that still belongs to that build.
 
 ## Platform status and limitations
 
-rpn-calc packages Windows and macOS desktop builds. The portable calculation
+RPN Calc packages Windows and macOS desktop builds. The portable calculation
 core and offscreen Qt behavior are covered by automated tests, but platform
 integration still requires verification on the matching physical host.
 
@@ -242,7 +242,7 @@ Action commits are pinned; dependency updates still require review and tests.
 
 ## License
 
-rpn-calc is released under the [MIT License](LICENSE).
+RPN Calc is released under the [MIT License](LICENSE).
 
 The interface, theming, and algebraic engine derive from **omacalc** by David
 Heinemeier Hansson (MIT). TVM and cash-flow closed forms were cross-checked
