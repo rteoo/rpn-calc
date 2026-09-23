@@ -8,6 +8,15 @@ Each version links to its release. 0.2.0 and 0.2.1 were bumped but never
 tagged, so their changes first reached users in 0.3.0; they link to the commit
 that carried them instead.
 
+## [0.6.3] - 2026-09-22
+
+### Changed
+
+- **Faster startup.** The window opens about 40% sooner (~755 ms to ~458 ms
+  on the Windows build). Hidden keycap text no longer carries the drawn Σ
+  and Δ, which sent Qt searching the system fonts for glyphs nobody sees.
+  The rendered face is unchanged.
+
 ## [0.6.2] - 2026-09-17
 
 ### Added
@@ -230,6 +239,7 @@ First release. An HP 50g-style RPN calculator wearing omacalc's face.
 - Errors never mutate the stack: `1 ENTER 0 ÷` reports `Infinite Result` with
   both operands still present.
 
+[0.6.3]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.3
 [0.6.2]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.2
 [0.6.1]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.1
 [0.6.0]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.0
