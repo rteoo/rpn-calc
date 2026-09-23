@@ -8,6 +8,21 @@ Each version links to its release. 0.2.0 and 0.2.1 were bumped but never
 tagged, so their changes first reached users in 0.3.0; they link to the commit
 that carried them instead.
 
+## [0.6.5] - 2026-09-23
+
+### Added
+
+- **A macOS disk image.** Releases attach `rpncalc-<version>.dmg`: open it
+  and drag **RPN Calc** onto **Applications**. The app inside is named
+  "RPN Calc" in Finder. The zip is still attached.
+- **The Windows installer ships with every release.** The release build now
+  compiles and attaches `rpncalc-<version>-installer.exe` next to the zip.
+
+### Changed
+
+- The README explains how to allow an ad-hoc signed build on macOS 15 and
+  later, where right-click → Open no longer bypasses Gatekeeper.
+
 ## [0.6.4] - 2026-09-23
 
 ### Changed
@@ -249,6 +264,7 @@ First release. An HP 50g-style RPN calculator wearing omacalc's face.
 - Errors never mutate the stack: `1 ENTER 0 ÷` reports `Infinite Result` with
   both operands still present.
 
+[0.6.5]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.5
 [0.6.4]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.4
 [0.6.3]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.3
 [0.6.2]: https://github.com/rteoo/rpn-calc/releases/tag/v0.6.2
