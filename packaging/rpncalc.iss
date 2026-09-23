@@ -2,7 +2,7 @@
 ; Build with: iscc.exe packaging/rpncalc.iss
 
 #define MyAppName "rpn-calc"
-#define MyAppVersion "0.6.1"
+#define MyAppVersion "0.6.3"
 #define MyAppPublisher "Rodrigo Teodoro"
 #define MyAppURL "https://github.com/rteoo/rpn-calc"
 #define MyAppExeName "rpncalc.exe"
