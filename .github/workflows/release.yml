@@ -83,12 +83,17 @@ jobs:
           if [ -z "$APPLE_ID" ]; then exit 0; fi
           python tools/notarize_macos.py dist/rpn-calc.app
 
+      # After notarization, so the image carries the stapled bundle.
+      - name: Build .dmg
+        run: python tools/make_dmg.py dist/rpn-calc.app
       - name: Name the zip for the release
         run: mv dist/rpn-calc.app.zip dist/rpn-calc-macos.zip
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: rpn-calc-macos
-          path: dist/rpn-calc-macos.zip
+          path: |
+            dist/rpn-calc-macos.zip
+            dist/rpncalc-*.dmg
           if-no-files-found: error
 
       - name: Forget the signing keychain
@@ -140,6 +145,7 @@ jobs:
         with:
           files: |
             artifacts/rpn-calc-macos/rpn-calc-macos.zip
+            artifacts/rpn-calc-macos/rpncalc-*.dmg
             artifacts/rpncalc-windows/rpncalc-windows.zip
             artifacts/rpncalc-windows/rpncalc-*-installer.exe
           generate_release_notes: true

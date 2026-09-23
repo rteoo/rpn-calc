@@ -39,15 +39,19 @@ installation is required for a packaged build.
 
 | Platform | Package |
 | --- | --- |
-| Windows | `rpncalc-windows.zip` containing the app and its required Qt files |
-| macOS | `rpn-calc-macos.zip` containing the `.app` bundle |
+| Windows | `rpncalc-<version>-installer.exe`, or `rpncalc-windows.zip` containing the app and its required Qt files |
+| macOS | `rpncalc-<version>.dmg`, or `rpn-calc-macos.zip` containing the `.app` bundle |
 
-On Windows, extract the complete ZIP and run `rpncalc.exe` inside the resulting
-folder. Keep the folder together because the executable loads Qt from beside it.
+On Windows, the installer adds Start menu shortcuts and can bind the keyboard's
+calculator key. To use the ZIP instead, extract it completely and run
+`rpncalc.exe` inside the resulting folder. Keep the folder together because the
+executable loads Qt from beside it.
 
-The macOS package may be ad-hoc signed when a notarized release is unavailable.
-In that case, use **right-click → Open** on first launch to confirm Gatekeeper's
-prompt.
+On macOS, open the disk image and drag **RPN Calc** onto **Applications**.
+The app may be ad-hoc signed when a notarized release is unavailable. In that
+case Gatekeeper blocks the first launch: on macOS 15 and later, allow it under
+**System Settings → Privacy & Security → Open Anyway**; on earlier versions,
+use **right-click → Open**.
 
 To run from source with Python 3.10 or newer:
 
@@ -203,6 +207,11 @@ python tools/build_exe.py
 | --- | --- |
 | Windows | `dist/rpncalc/` and `dist/rpncalc-windows.zip` |
 | macOS | `dist/rpn-calc.app` and `dist/rpn-calc.app.zip` |
+
+On a Mac, `python tools/make_dmg.py dist/rpn-calc.app` then wraps the bundle in
+`dist/rpncalc-<version>.dmg`. On Windows, Inno Setup's
+`iscc packaging\rpncalc.iss` packages `dist/rpncalc/` as
+`dist/rpncalc-<version>-installer.exe`.
 
 Windows folder builds are the default; pass `--onefile` for a single executable
 that extracts its runtime to a temporary directory on each launch. Pass
