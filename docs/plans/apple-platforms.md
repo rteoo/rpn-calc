@@ -36,8 +36,9 @@ Apple notarizes the archive, but Gatekeeper reads the ticket off the bundle.
 The release workflow does both when `MACOS_CERTIFICATE`,
 `MACOS_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID` and
 `APPLE_APP_PASSWORD` are set, and skips both when they are not: a tagged `v*`
-still attaches an ad-hoc zip whose first-open is right-click → Open, with
-`xattr -cr dist/rpn-calc.app` as the local escape.
+still attaches an ad-hoc zip and disk image. Their first open needs System
+Settings → Privacy & Security → Open Anyway (right-click → Open before macOS
+15), with `xattr -cr dist/rpn-calc.app` as the local escape.
 
 `python tools/smoke_macos.py --source` and `python tools/smoke_macos.py dist/rpn-calc.app`
 open a real cocoa window (`--smoke` refuses `QT_QPA_PLATFORM=offscreen`) and
