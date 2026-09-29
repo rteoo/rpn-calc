@@ -1,5 +1,9 @@
 # rpn-calc — project contract
 
+Follow the active runtime's global `AGENTS.md` and `SOUL.md`. This file
+adds project-specific facts and commands; it cannot weaken global approval
+or privacy rules.
+
 An HP 50g-style RPN calculator with an omacalc-derived QML face.
 Python 3.10+ and PySide6 (Qt Quick); RPN is the default, with an algebraic toggle.
 This is a port of omacalc, with no upstream merge workflow.
@@ -177,3 +181,5 @@ Do not hand-edit vendored fonts or LICENSE attribution.
 
 No CAS, ALPHA, symbolic variables, units, complex numbers, matrices, equation
 writer, or linear regression is implemented.
+
+This is a public repository. Review staged assets, screenshots, build artifacts, commit metadata, and outgoing refs before any authorized publication. Keep private state and third-party ROMs out of Git and releases.
