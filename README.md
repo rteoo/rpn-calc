@@ -249,6 +249,11 @@ hashes. Release CI installs that lock before installing the local project with
 `uv pip compile pyproject.toml --extra dev --extra build --universal --python-version 3.12 --generate-hashes -o requirements-release.lock`.
 Action commits are pinned; dependency updates still require review and tests.
 
+## Windows release preparation
+
+See [RELEASE-WINDOWS.md](RELEASE-WINDOWS.md) for the clean-checkout dry run,
+native package preparation, artifact verification, and follow-up release gates.
+
 ## License
 
 RPN Calc is released under the [MIT License](LICENSE).
